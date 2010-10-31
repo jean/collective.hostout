@@ -1,6 +1,7 @@
 import os
 import os.path
-from fabric import api, contrib
+import fabric
+from fabric import api, contrib # why doesn't contrib.files get found below?
 from collective.hostout.hostout import buildoutuser
 from fabric.context_managers import cd
 from pkg_resources import resource_filename
