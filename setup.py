@@ -51,6 +51,7 @@ setup(
     install_requires = ['zc.buildout',
                         'zc.recipe.egg',
                         'setuptools',
+                        'setuptools-git',
                         'Fabric',
                         'paramiko'
                         ],
