@@ -35,6 +35,8 @@ def get(file, target=None):
 
 def deploy():
     "predeploy, uploadeggs, uploadbuildout, buildout and then postdeploy"
+    
+    
     hostout = api.env['hostout']
     hostout.predeploy()
     hostout.uploadeggs()
@@ -58,6 +60,23 @@ def predeploy():
     with cd(api.env.path):
         for cmd in hostout.getPreCommands():
             api.sudo('sh -c "%s"'%cmd)
+
+
+# Make uploadeggs, uploadbuildout and buildout run independent of each other
+# uploadeggs should upload the eggs and write out the versions to a versions file on the host
+# uploadbuildout should upload buildout + dependencies but no version pinning
+# buildout should upload just the generated cfg which instructs which buildout to run. This step should pin versions
+# if buildout is run without uploadeggs then no pinned dev eggs versions exist. in which case need
+# to upload dummy pinned versions file.
+
+# buildout will upload file like staging_20100411-23:04:04-[uid].cfg 
+# which extends=staging.cfg hostoutversions.cfg devpinds.cfg 
+
+# scenarios
+# using buildout only
+# use uploadbuildout and buildout
+# use uploadeggs and then later buildout
+
 
 
 @buildoutuser
@@ -136,14 +155,14 @@ def postdeploy():
 
 def bootstrap():
     """ Install packages and users needed to get buildout running """
-    hostos = api.env.get('hostos')
+    hostos = api.env.get('hostos','').lower()
     version = api.env['python-version']
     major = '.'.join(version.split('.')[:2])
     majorshort = major.replace('.','')
     d = dict(major=major)
 
     if not hostos:
-        hostos = api.env.hostout.detecthostos()
+        hostos = api.env.hostout.detecthostos().lower()
         
     cmd = getattr(api.env.hostout, 'bootstrap_users_%s'%hostos, api.env.hostout.bootstrap_users)
     cmd()
@@ -258,6 +277,10 @@ def bootstrap_buildout():
     with cd(api.env.path):
         api.sudo('%s bootstrap.py --distribute' % python)
 
+def bootstrap_buildout_ubuntu():
+    api.sudo('apt-get -yq install '
+             'build-essential ')
+    api.env.hostout.bootstrap_buildout()
 
 def bootstrap_python_buildout():
     "Install python from source via buildout"

@@ -33,6 +33,7 @@ from collective.hostout import relpath
 import pkg_resources
 from setuptools import package_index
 from urllib import pathname2url
+import StringIO
 
 
 """
@@ -181,22 +182,58 @@ class HostOut:
         if self.hostout_package is not None:
             return self.hostout_package
 
+        base = self.buildout_dir
+        
+        config = ConfigParser.ConfigParser()
+        config.optionxform = str
+#        config.read([path])
+        if 'buildout' not in config.sections():
+            config.add_section('buildout')
+        files = []
+        files = files + self.buildout_cfg
+        files = [relpath(file, base) for file in files]
+
+        config.set('buildout', 'extends', ' '.join(files))
+        config.set('buildout', 'develop', '')
+        config.set('buildout', 'eggs-directory', self.getEggCache())
+        config.set('buildout', 'download-cache', self.getDownloadCache())
+        config.set('buildout', 'newest', 'true')
+        if self.getParts():
+            config.set('buildout', 'parts', ' '.join(self.getParts()))
+
+        res = StringIO.StringIO()
+        config.write(res)
+        genconfig = res.getvalue()
+        
+        if self.options['versionsfile']:
+            versions = open(self.options['versionsfile']).read()
+            genconfig += versions
+
+        genconfig += self.packages.developVersions()
+
+        
         dist_dir = self.packages.dist_dir
-        self.config_file = self.genhostout()
-        config_file = os.path.abspath(os.path.join(self.packages.buildout_location,self.config_file))
-        if not os.path.exists(config_file):
-            raise Exception("Invalid config file")
+        base = self.buildout_dir
+        #self.config_file = os.path.join(base,'%s.cfg'%self.name)
+        
+        #config_file = os.path.abspath(os.path.join(self.packages.buildout_location,self.config_file))
+        #if not os.path.exists(config_file):
+        #    raise Exception("Invalid config file")
 
-        files = get_all_extends(config_file)
-        files += self.getBuildoutDependencies()
+        #config_file = self.buildout_cfg
+        files = set()
+        for file in self.buildout_cfg:
+            files = files.union( set(get_all_extends(file)))
+        files.union(set(self.getBuildoutDependencies()))
+        files = list(files)
 
-        self.packages.writeVersions(config_file, self.versions_part)
 
         dist_dir = self.dist_dir
         self.releaseid = '%s_%s'%(time.time(),uuid())
         self.releaseid = _dir_hash(files)
 
         name = '%s/%s_%s.tgz'%(dist_dir,'deploy', self.releaseid)
+        self.config_file = "%s-%s.cfg" % (self.name, self.releaseid) 
         self.hostout_package = name
         if os.path.exists(name):
             return name
@@ -206,6 +243,9 @@ class HostOut:
         for file in files:
             relative = file[len(self.buildout_dir)+1:] #TODO
             self.tar.add(file,arcname=relative)
+        genconfig = StringIO.StringIO(genconfig)
+        genconfig.name= self.config_file
+        self.tar.addfile(self.tar.gettarinfo(arcname=self.config_file, fileobj=genconfig), fileobj=genconfig)
         self.tar.close()
         return self.hostout_package
 
@@ -296,7 +336,7 @@ class HostOut:
                 self.runcommand(cmd)
                 
                 
-    def runcommand(self, cmd, *cmdargs):
+    def runcommand(self, cmd, *cmdargs, **vargs):
             # Let plugins change host or user if they want
             for func,fabfile in self.inits:
                 func(cmd)
@@ -318,7 +358,7 @@ class HostOut:
                 api.env['host_string']="%(user)s@%(host)s:%(port)s"%api.env
                 api.env.cwd = ''
                 output.debug = True
-                res = func(*cmdargs)
+                res = func(*cmdargs, **vargs)
                 if res not in [None,True]:
                     print >> sys.stderr, "Hostout aborted"
                     res = False
@@ -330,77 +370,10 @@ class HostOut:
         """ call all the methods by this name in fabfiles """
         if name not in self.allcmds():
             raise AttributeError()
-        def run(*args):
-            return self.runcommand(name, *args)
+        def run(*args, **vargs):
+            return self.runcommand(name, *args, **vargs)
         return run
 
-#    def genhostout(self):
-#        """ generate a new buildout file which pins versions and uses our deployment distributions"""
-#
-
-#        base = self.buildout_dir
-
-
-#        files = [relpath(file, base) for file in self.buildout_cfg]
-        #dist_dir = relpath(self.dist_dir, base)
-        #versions = ""
-#        hostout = HOSTOUT_TEMPLATE % dict(buildoutfile=' '.join(files),
-                                          #eggdir=dist_dir,
- #                                         download_cache=self.getDownloadCache(),
- #                                         egg_cache=self.getEggCache(),
- #                                         )
- #       path = os.path.join(base,'%s.cfg'%self.name)
- #       hostoutf = open(path,'w')
- #       hostoutf.write(hostout)
- #       hostoutf.close()
- #       return path
-
-    def genhostout(self):
-        base = self.buildout_dir
-        path = os.path.join(base,'%s.cfg'%self.name)
-        config = ConfigParser.ConfigParser()
-        config.optionxform = str
-        config.read([path])
-        if 'buildout' not in config.sections():
-            config.add_section('buildout')
-        if self.options['versionsfile']:
-            files = [self.options['versionsfile']]
-        else:
-            files = []
-        files = files + self.buildout_cfg
-        files = [relpath(file, base) for file in files]
-
-        config.set('buildout', 'extends', ' '.join(files))
-        config.set('buildout', 'develop', '')
-        config.set('buildout', 'eggs-directory', self.getEggCache())
-        config.set('buildout', 'download-cache', self.getDownloadCache())
-        config.set('buildout', 'newest', 'true')
-        if self.getParts():
-            config.set('buildout', 'parts', ' '.join(self.getParts()))
-
-        fp = open(path,'w')
-        config.write(fp)
-        fp.close()
-        return path
-
-
-
-HOSTOUT_TEMPLATE = """
-[buildout]
-extends = %(buildoutfile)s
-
-#prevent us looking for them as developer eggs
-develop=
-
-#install-from-cache = true
-
-#Match to unifiedinstaller
-eggs-directory = %(egg_cache)s
-download-cache = %(download_cache)s
-
-#non-newest set because we know exact versions we want
-newest=true
-"""
 
 
 
@@ -535,30 +508,19 @@ class Packages:
             print "Hostout: Eggs to transport:\n%s" % '\n'.join(specs)
         return self.local_eggs
 
-    def writeVersions(self, versions_file, part):
+
+    def developVersions(self):
 
         self.release_eggs() #ensure we've got self.develop_versions
 
-#        assert len(specs) == len(self.packages)
-        config = ConfigParser.RawConfigParser()
-        config.optionxform = str
-        config.read([versions_file])
         specs = {}
-#        specs.update(self.versions)
         #have to use lower since eggs are case insensitive
         specs.update(dict([(p,v) for p,v,e in self.local_eggs.values()]))
-        config.set('buildout', 'versions', part)
-        if part in config.sections():
-            config.remove_section(part)
-        config.add_section(part)
 
+        res = ""
         for name, version in sorted(specs.items()):
-            config.set(part,name,version)
-        fp = open(versions_file,'w')
-        config.write(fp)
-        fp.close()
-        print "Hostout: Wrote versions to %s"%versions_file
-
+            res += "\n%s=%s" % (name,version)
+        return res
 
     def setup(self, args):
         setup = args.pop(0)
