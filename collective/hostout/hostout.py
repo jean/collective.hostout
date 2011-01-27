@@ -136,10 +136,6 @@ class HostOut:
         #self.tar = None
         self.sets = []
 
-    def getHostoutFile(self):
-        #make sure package has generated
-        self.getHostoutPackage()
-        return self.config_file[len(self.packages.buildout_location)+1:]
 
     def getPreCommands(self):
         return self._subRemote(clean(self.stop_cmd))
@@ -158,8 +154,7 @@ class HostOut:
         return self.remote_dir
 
     def localEggs(self):
-        self.getHostoutPackage() #ensure eggs are generated
-        return [e for p,v,e in self.packages.local_eggs.values()]
+        return [e for p,v,e in self.packages.release_eggs().values()]
 
     def getParts(self):
         return self.parts
@@ -176,14 +171,13 @@ class HostOut:
 #    def getDeployTar(self):
 #        return self.packages.getDeployTar()
 
-    def getHostoutPackage(self):
-        "determine all the buildout files that make up this configuration and package them"
+#    def getHostoutFile(self):
+#        #make sure package has generated
+#        self.getHostoutPackage()
+#        return self.config_file[len(self.packages.buildout_location)+1:]
 
-        if self.hostout_package is not None:
-            return self.hostout_package
 
-        base = self.buildout_dir
-        
+    def getHostoutFile(self):
         config = ConfigParser.ConfigParser()
         config.optionxform = str
 #        config.read([path])
@@ -191,10 +185,10 @@ class HostOut:
             config.add_section('buildout')
         files = []
         files = files + self.buildout_cfg
-        files = [relpath(file, base) for file in files]
+        base = self.buildout_dir
+        files = ['pinned.cfg']+[relpath(file, base) for file in files]
 
         config.set('buildout', 'extends', ' '.join(files))
-        config.set('buildout', 'develop', '')
         config.set('buildout', 'eggs-directory', self.getEggCache())
         config.set('buildout', 'download-cache', self.getDownloadCache())
         config.set('buildout', 'newest', 'true')
@@ -207,11 +201,26 @@ class HostOut:
         
         if self.options['versionsfile']:
             versions = open(self.options['versionsfile']).read()
-            genconfig += versions
-
-        genconfig += self.packages.developVersions()
-
+            #need to remove the dev eggs
+            eggs = self.packages.getPackages()
+            for line in versions.split('\n'):
+                found = False
+                for package in eggs.keys():
+                    if line.startswith(package):
+                        found = True
+                        break
+                if not found:
+                    genconfig += line+'\n'
         
+        return genconfig
+
+
+
+    def getHostoutPackage(self):
+        "determine all the buildout files that make up this configuration and package them"
+
+        if self.hostout_package is not None:
+            return self.hostout_package
         dist_dir = self.packages.dist_dir
         base = self.buildout_dir
         #self.config_file = os.path.join(base,'%s.cfg'%self.name)
@@ -226,26 +235,20 @@ class HostOut:
             files = files.union( set(get_all_extends(file)))
         files.union(set(self.getBuildoutDependencies()))
         files = list(files)
-
-
-        dist_dir = self.dist_dir
         self.releaseid = '%s_%s'%(time.time(),uuid())
         self.releaseid = _dir_hash(files)
 
         name = '%s/%s_%s.tgz'%(dist_dir,'deploy', self.releaseid)
-        self.config_file = "%s-%s.cfg" % (self.name, self.releaseid) 
         self.hostout_package = name
-        if os.path.exists(name):
-            return name
-        else:
-            self.tar = tarfile.open(name,"w:gz")
+        #if os.path.exists(name):
+        #    return name
+        #else:
+        self.tar = tarfile.open(name,"w:gz")
 
         for file in files:
-            relative = file[len(self.buildout_dir)+1:] #TODO
+            #relative = file[len(self.buildout_dir)+1:] #TODO
+            relative = file
             self.tar.add(file,arcname=relative)
-        genconfig = StringIO.StringIO(genconfig)
-        genconfig.name= self.config_file
-        self.tar.addfile(self.tar.gettarinfo(arcname=self.config_file, fileobj=genconfig), fileobj=genconfig)
         self.tar.close()
         return self.hostout_package
 
@@ -407,6 +410,19 @@ class Packages:
         return dict([(( egg.project_name,egg.version),egg) for egg in eggs])
         #eggs = pkg_resources.Environment(self.dist_dir)
         #return dict([(( egg.project_name,egg.version),egg) for egg in eggs])
+        
+        
+    def getPackages(self):
+        res = {}
+        for path in self.packages:
+
+            # use buildout to run setup for us
+            path = os.path.abspath(path)
+            dists = find_distributions(path)
+            if dists:
+                dist = dists[0]
+                res[dist.project_name] = (dist.project_name, dist.version)
+        return res
 
 
     def release_eggs(self):

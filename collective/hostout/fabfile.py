@@ -70,12 +70,15 @@ def predeploy():
 # to upload dummy pinned versions file.
 
 # buildout will upload file like staging_20100411-23:04:04-[uid].cfg 
-# which extends=staging.cfg hostoutversions.cfg devpinds.cfg 
+# which extends=staging.cfg hostoutversions.cfg devpins.cfg 
 
 # scenarios
 # using buildout only
 # use uploadbuildout and buildout
 # use uploadeggs and then later buildout
+
+# secondary benifit would be to have a set of files which you could roll back easily to a previous
+# buildout version including all the dev eggs.
 
 
 
@@ -90,8 +93,10 @@ def uploadeggs():
     dl = hostout.getDownloadCache()
     contents = api.run('ls %s/dist' % dl).split()
 
+    import pdb; pdb.set_trace()
     for pkg in hostout.localEggs():
         name = os.path.basename(pkg)
+        
         if name not in contents:
             tmp = os.path.join('/tmp', name)
             api.put(pkg, tmp)
@@ -102,6 +107,13 @@ def uploadeggs():
                     tgt = os.path.join(dl, 'dist', name),
                     buildout=api.env.hostout.options['buildout-user'],
                     ))
+    # Ensure there is no local pinned.cfg so we don't clobber it
+    # Now upload pinned.cfg. 
+    with cd(api.env.path):
+        if contrib.files.exists('pinned.cfg'):
+            api.run("rm pinned.cfg")
+        pinned = "[buildout]\ndevelop=\n[versions]\n"+hostout.packages.developVersions()
+        contrib.files.append(pinned, 'pinned.cfg')
 
 @buildoutuser
 def uploadbuildout():
@@ -132,8 +144,22 @@ def buildout():
 
     hostout = api.env.hostout
     hostout_file=hostout.getHostoutFile()
+    
+    #upload generated cfg with hostout versions
+    hostout.getHostoutPackage() # we need this work out releaseid
+    filename = "%s-%s.cfg" % (hostout.name, hostout.releaseid) 
+    
     with cd(api.env.path):
-        api.run('bin/buildout -c %(hostout_file)s' % locals())
+        if contrib.files.exists(filename):
+            api.run("rm %s"%filename)
+        contrib.files.append(hostout_file, filename)
+    
+            #if no pinned.cfg then upload empty one
+        if not contrib.files.exists('pinned.cfg'):
+            pinned = "[versions]"
+            contrib.files.append(pinned, 'pinned.cfg')
+        #run generated buildout 
+        api.run('bin/buildout -c %(filename)s' % locals())
 
 
 def postdeploy():
