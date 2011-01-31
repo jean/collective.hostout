@@ -296,7 +296,7 @@ class HostOut:
                 self.runcommand(cmd)
                 
                 
-    def runcommand(self, cmd, *cmdargs):
+    def runcommand(self, cmd, *cmdargs, **vargs):
             # Let plugins change host or user if they want
             for func,fabfile in self.inits:
                 func(cmd)
@@ -318,7 +318,7 @@ class HostOut:
                 api.env['host_string']="%(user)s@%(host)s:%(port)s"%api.env
                 api.env.cwd = ''
                 output.debug = True
-                res = func(*cmdargs)
+                res = func(*cmdargs, **vargs)
                 if res not in [None,True]:
                     print >> sys.stderr, "Hostout aborted"
                     res = False
@@ -330,8 +330,8 @@ class HostOut:
         """ call all the methods by this name in fabfiles """
         if name not in self.allcmds():
             raise AttributeError()
-        def run(*args):
-            return self.runcommand(name, *args)
+        def run(*args, **vargs):
+            return self.runcommand(name, *args, **vargs)
         return run
 
 #    def genhostout(self):
