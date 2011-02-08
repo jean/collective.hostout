@@ -52,7 +52,7 @@ def predeploy():
 
     #if api.sudo("[ -e %s ]"%api.env.path, pty=True).succeeded:
     try:
-        api.sudo("[ -e %s/bin/buildout ]"%api.env.path, pty=True)
+        api.run("[ -e %s/bin/buildout ]"%api.env.path, pty=True)
     except:
         hostout.bootstrap()
         hostout.setowners()
@@ -93,7 +93,6 @@ def uploadeggs():
     dl = hostout.getDownloadCache()
     contents = api.run('ls %s/dist' % dl).split()
 
-    import pdb; pdb.set_trace()
     for pkg in hostout.localEggs():
         name = os.path.basename(pkg)
         
