@@ -50,7 +50,7 @@ def predeploy():
 
     #if api.sudo("[ -e %s ]"%api.env.path, pty=True).succeeded:
     try:
-        api.sudo("[ -e %s ]"%api.env.path, pty=True)
+        api.sudo("[ -e %s/bin/buildout ]"%api.env.path, pty=True)
     except:
         hostout.bootstrap()
         hostout.setowners()
@@ -147,15 +147,28 @@ def bootstrap():
         
     cmd = getattr(api.env.hostout, 'bootstrap_users_%s'%hostos, api.env.hostout.bootstrap_users)
     cmd()
-    
-    
-    
+
     #if api.run('python%(major)s --version'%d).succeeded:
     try:
         api.run('python%(major)s --version'%d)
     except:
         cmd = getattr(api.env.hostout, 'bootstrap_python_%s'%hostos, api.env.hostout.bootstrap_python)
         cmd()
+
+    path = api.env.path
+    buildout = api.env['buildout-user']
+    buildoutgroup = api.env['buildout-group']
+    api.sudo('mkdir %(path)s & chown %(buildout)s:%(buildoutgroup)s %(path)s' % dict(
+        path=path,
+        buildout=buildout,
+        buildoutgroup=buildoutgroup,
+    ))
+
+    buildoutcache = api.env['buildout-cache']
+    api.sudo('mkdir -p %s/eggs' % buildoutcache)
+    api.sudo('mkdir -p %s/downloads/dist' % buildoutcache)
+    api.sudo('mkdir -p %s/extends' % buildoutcache)
+    api.sudo('chown -R %s:%s %s' % (buildout, buildoutgroup, buildoutcache))
 
     cmd = getattr(api.env.hostout, 'bootstrap_buildout_%s'%hostos, api.env.hostout.bootstrap_buildout)
     cmd()
@@ -226,37 +239,36 @@ def bootstrap_users():
         append(key, '~%s/.ssh/authorized_keys' % owner, use_sudo=True)
         api.sudo("chown -R %(owner)s ~%(owner)s/.ssh" % locals() )
 
+@buildoutuser
 def bootstrap_buildout():
     """ Create an initialised buildout directory """
     # bootstrap assumes that correct python is already installed
     path = api.env.path
     buildout = api.env['buildout-user']
     buildoutgroup = api.env['buildout-group']
-    api.sudo('mkdir -p %(path)s' % locals())
-    api.sudo('chown -R %(buildout)s:%(buildoutgroup)s %(path)s'%locals())
+    api.sudo('chown %(buildout)s:%(buildoutgroup)s %(path)s'%locals())
 
     buildoutcache = api.env['buildout-cache']
-    api.sudo('mkdir -p %s/eggs' % buildoutcache)
-    api.sudo('mkdir -p %s/downloads/dist' % buildoutcache)
-    api.sudo('mkdir -p %s/extends' % buildoutcache)
-    api.sudo('chown -R %s:%s %s' % (buildout, buildoutgroup, buildoutcache))
-    api.env.cwd = api.env.path
-   
+    api.run('mkdir -p %s/eggs' % buildoutcache)
+    api.run('mkdir -p %s/downloads/dist' % buildoutcache)
+    api.run('mkdir -p %s/extends' % buildoutcache)
+    #api.run('chown -R %s:%s %s' % (buildout, buildoutgroup, buildoutcache))
+
     bootstrap = resource_filename(__name__, 'bootstrap.py')
-    api.put(bootstrap, '%s/bootstrap.py' % path)
+    with cd(path):
+        api.put(bootstrap, '%s/bootstrap.py' % path)
     
-    # put in simplest buildout to get bootstrap to run
-    api.sudo('echo "[buildout]" > buildout.cfg')
+        # put in simplest buildout to get bootstrap to run
+        api.run('echo "[buildout]" > buildout.cfg')
 
-    python = api.env.get('python')
-    if not python or python == 'buildout':
-        
-        version = api.env['python-version']
-        major = '.'.join(version.split('.')[:2])
-        python = "python%s" % major
+        python = api.env.get('python')
+        if not python or python == 'buildout':
 
-    with cd(api.env.path):
-        api.sudo('%s bootstrap.py --distribute' % python)
+            version = api.env['python-version']
+            major = '.'.join(version.split('.')[:2])
+            python = "python%s" % major
+    
+        api.run('%s bootstrap.py --distribute' % python)
 
 
 def bootstrap_python_buildout():
@@ -360,12 +372,12 @@ def bootstrap_python_ubuntu():
              'libncurses5-dev '
 # needed for lxml on lucid
              'libz-dev '
-             'libdb4.6 '
              'libxp-dev '
              'libreadline5 '
              'libreadline5-dev '
              'libbz2-dev '
              'libssl-dev '
+             'curl '
              #'openssl '
              #'openssl-dev '
              )
@@ -440,10 +452,11 @@ def detecthostos():
         "([ -e /etc/SuSE-release ] && echo SuSE) || "
                 "([ -e /etc/redhat-release ] && echo redhat) || "
                 "([ -e /etc/fedora-release ] && echo fedora) || "
-                "(lsb_release -rd) || "
-                "([ -e /etc/debian-version ] && echo ubuntu) || "
+                "(lsb_release -is) || "
                 "([ -e /etc/slackware-version ] && echo slackware)"
                )
+    if hostos:
+        hostos = hostos.lower().strip()
     print "Detected Hostos = %s" % hostos
     api.env['hostos'] = hostos
     return hostos
