@@ -362,13 +362,8 @@ class HostOut:
                 api.env.cwd = ''
                 output.debug = True
                 res = func(*cmdargs, **vargs)
-                if res not in [None,True]:
-                    print >> sys.stderr, "Hostout aborted"
-                    res = False
-                    break
-                else:
-                    res = True
-    
+                return res
+
     def __getattr__(self, name):
         """ call all the methods by this name in fabfiles """
         if name not in self.allcmds():
