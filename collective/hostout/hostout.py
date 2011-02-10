@@ -34,6 +34,7 @@ import pkg_resources
 from setuptools import package_index
 from urllib import pathname2url
 import StringIO
+import functools
 
 
 """
@@ -348,10 +349,15 @@ class HostOut:
             if not funcs:
                 print >> sys.stderr, "'%(cmd)s' is not a valid command for host '%(host)s'"%locals()
                 return
-            
-            for func,fabfile in funcs:
-        
-                print "Hostout: Running command '%(cmd)s' from '%(fabfile)s'" % locals()
+
+            def superfun(funcs, *cmdargs, **vargs):
+                if len(funcs) == 0:
+                    return None
+                func,fabfile = funcs[0]
+                api.env['superfun'] = functools.partial(superfun, funcs[1:])
+
+                print "Hostout: Running command '%(cmd)s' from '%(fabfile)s'" % dict(cmd=cmd,
+                                                                                     fabfile=fabfile)
                 
                 key_filename = api.env.get('identity-file')
                 if key_filename and os.path.exists(key_filename):
@@ -363,6 +369,7 @@ class HostOut:
                 output.debug = True
                 res = func(*cmdargs, **vargs)
                 return res
+            return superfun(funcs, *cmdargs, **vargs)
 
     def __getattr__(self, name):
         """ call all the methods by this name in fabfiles """
@@ -540,6 +547,7 @@ class Packages:
 
         #self._logger.info("Running setup script %r.", setup)
         setup = os.path.abspath(setup)
+
 
         fd, tsetup = tempfile.mkstemp()
         try:
