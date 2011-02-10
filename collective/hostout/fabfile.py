@@ -5,6 +5,7 @@ from fabric.contrib.files import append
 from collective.hostout.hostout import buildoutuser
 from fabric.context_managers import cd
 from pkg_resources import resource_filename
+import tempfile
     
 
 @buildoutuser
@@ -44,6 +45,7 @@ def deploy():
     hostout.buildout()
     hostout.postdeploy()
 
+@buildoutuser
 def predeploy():
     """Perform any initial plugin tasks. Call bootstrap if needed"""
     hostout = api.env['hostout']
@@ -57,6 +59,12 @@ def predeploy():
         hostout.bootstrap()
         hostout.setowners()
 
+    hostout.precommands()
+    return api.env.superfun()
+
+def precommands():
+    "run 'pre-commands' as sudo before deployment"
+    hostout = api.env['hostout']
     with cd(api.env.path):
         for cmd in hostout.getPreCommands():
             api.sudo('sh -c "%s"'%cmd)
@@ -108,11 +116,12 @@ def uploadeggs():
                     ))
     # Ensure there is no local pinned.cfg so we don't clobber it
     # Now upload pinned.cfg. 
-    with cd(api.env.path):
-        if contrib.files.exists('pinned.cfg'):
-            api.run("rm pinned.cfg")
-        pinned = "[buildout]\ndevelop=\n[versions]\n"+hostout.packages.developVersions()
-        contrib.files.append(pinned, 'pinned.cfg')
+    pinned = "[buildout]\ndevelop=\n[versions]\n"+hostout.packages.developVersions()
+    tmp = tempfile.NamedTemporaryFile()
+    tmp.write(pinned)
+    tmp.flush()
+    api.put(tmp.name, api.env.path+'/pinned.cfg')
+    tmp.close()
 
 @buildoutuser
 def uploadbuildout():
@@ -129,7 +138,6 @@ def uploadbuildout():
         api.put(package, tmp)
         api.run("mv %(tmp)s %(tgt)s" % locals() )
         #sudo('chown $(effectiveuser) %s' % tgt)
-
 
     user=hostout.options['buildout-user']
     install_dir=hostout.options['path']
@@ -149,17 +157,18 @@ def buildout():
     filename = "%s-%s.cfg" % (hostout.name, hostout.releaseid) 
     
     with cd(api.env.path):
-        if contrib.files.exists(filename):
-            api.run("rm %s"%filename)
-        contrib.files.append(hostout_file, filename)
-    
+        tmp = tempfile.NamedTemporaryFile()
+        tmp.write(hostout_file)
+        tmp.flush()
+        api.put(tmp.name, api.env.path+'/'+filename)
+        tmp.close()
+
             #if no pinned.cfg then upload empty one
         if not contrib.files.exists('pinned.cfg'):
-            pinned = "[versions]"
+            pinned = "[buildout]"
             contrib.files.append(pinned, 'pinned.cfg')
-        #run generated buildout 
-        api.run('bin/buildout -c %(filename)s' % locals())
-
+        #run generated buildout
+        api.run('bin/buildout -c %s' % filename)
 
 def postdeploy():
     """Perform any final plugin tasks """
@@ -167,11 +176,12 @@ def postdeploy():
     hostout = api.env.get('hostout')
     hostout.setowners()
 
-    hostout_file=hostout.getHostoutFile()
-    sudoparts = hostout.options.get('sudo-parts',None)
+    hostout.getHostoutPackage() # we need this work out releaseid
+    filename = "%s-%s.cfg" % (hostout.name, hostout.releaseid)
+    sudoparts = ' '.join(hostout.options.get('sudo-parts','').split())
     if sudoparts:
         with cd(api.env.path):
-            api.sudo('bin/buildout -c %(hostout_file)s install %(sudoparts)s' % locals())
+            api.sudo('bin/buildout -c %(filename)s install %(sudoparts)s' % locals())
  
     with cd(api.env.path):
         for cmd in hostout.getPostCommands():
@@ -420,10 +430,10 @@ def bootstrap_python_ubuntu():
              'libncurses5-dev '
 # needed for lxml on lucid
              'libz-dev '
+             'libbz2-dev '
              'libxp-dev '
              'libreadline5 '
              'libreadline5-dev '
-             'libbz2-dev '
              'libssl-dev '
              'curl '
              #'openssl '
