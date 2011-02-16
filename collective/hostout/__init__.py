@@ -238,8 +238,8 @@ class Recipe:
             requirements, ws = egg.working_set()
             for dist in [dist] + [d for d in ws]:
                 old_version,dep = versions.get(dist.project_name,('',[]))
-                if recipe not in dep:
-                    dep.append(recipe)
+                #if recipe not in dep:
+                #    dep.append(recipe)
                 if dist.version != '0.0':
                     versions[dist.project_name] = (dist.version,dep)
         spec = ""
