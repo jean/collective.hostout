@@ -187,7 +187,7 @@ class HostOut:
         files = []
         files = files + self.buildout_cfg
         base = self.buildout_dir
-        files = ['pinned.cfg']+[relpath(file, base) for file in files]
+        files = [relpath(file, base) for file in files]+['pinned.cfg']
 
         config.set('buildout', 'extends', ' '.join(files))
         config.set('buildout', 'eggs-directory', self.getEggCache())
