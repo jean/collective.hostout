@@ -44,7 +44,7 @@ setup(
 #    data_files = [('.', ['*.txt'])],
 #    package_data = {'':('*.txt')},
     namespace_packages = ['collective'],
-    install_requires = ['zc.buildout',
+    install_requires = [
                         'zc.recipe.egg',
                         'setuptools',
                         'Fabric',
