@@ -146,7 +146,7 @@ def uploadbuildout():
 #    hostout.setowners()
 
 @buildoutuser
-def buildout():
+def buildout(*args):
     """ Run the buildout on the remote server """
 
     hostout = api.env.hostout
@@ -168,7 +168,7 @@ def buildout():
             pinned = "[buildout]"
             contrib.files.append(pinned, 'pinned.cfg')
         #run generated buildout
-        api.run('bin/buildout -c %s' % filename)
+        api.run('bin/buildout -c %s %s' % (filename, ' '.join(args)))
 
 def postdeploy():
     """Perform any final plugin tasks """
