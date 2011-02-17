@@ -137,6 +137,11 @@ class HostOut:
         #self.tar = None
         self.sets = []
 
+        self.options['user'] = self.options.get('user') or self.user or 'root'
+        self.options['effective-user'] = self.options.get('effective-user') or self.user or 'root'
+        self.options['buildout-user'] = self.options.get('buildout-user') or self.user or 'root'
+
+        self.firstrun = True
 
     def getPreCommands(self):
         return self._subRemote(clean(self.stop_cmd))
@@ -310,66 +315,58 @@ class HostOut:
         return self._allcmds
 
 
-    def runfabric(self, cmds=None, *cmdargs):
-        "return all commands if none found to run"
-
-        #sets = [(fabric.COMMANDS,"<DEFAULT>")]
-        self.allcmds()
-        self.options['user'] = self.options.get('user') or self.user or 'root'
-        self.options['effective-user'] = self.options.get('effective-user') or self.user or 'root'
-        self.options['buildout-user'] = self.options.get('buildout-user') or self.user or 'root'
-        api.env['hostout'] = self
+    def resetenv(self):
+        self.readsshconfig()
         api.env.update( self.options )
         #api.env.path = '' #HACK - path == cwd
         if self.password:
             api.env['password']=self.password
         if self.identityfile and os.path.exists(self.identityfile):
             api.env['key_filename']=self.identityfile
-
         api.env.update( dict(
                    user=self.user,
                    hosts=[self.host],
                    port=self.port,
                    ))
 
-        self.inits = [(set.get('initcommand'),fabfile) for set,fabfile in self.sets if 'initcommand' in set]
-        for cmd in cmds:
-            if cmd == cmds[-1]:
-                self.runcommand(cmd, *cmdargs)
-            else:
-                self.runcommand(cmd)
-                
-                
     def runcommand(self, cmd, *cmdargs, **vargs):
-            # Let plugins change host or user if they want
-            for func,fabfile in self.inits:
-                func(cmd)
+        self.allcmds()
+        api.env['hostout'] = self
 
-            funcs = [(set.get(cmd),fabfile) for set,fabfile in self.sets if cmd in set]
-            if not funcs:
-                print >> sys.stderr, "'%(cmd)s' is not a valid command for host '%(host)s'"%locals()
-                return
+        if self.firstrun:
+            self.resetenv()
+            self.firstrun = False
 
-            def superfun(funcs, *cmdargs, **vargs):
-                if len(funcs) == 0:
-                    return None
-                func,fabfile = funcs[0]
-                api.env['superfun'] = functools.partial(superfun, funcs[1:])
+        # Let plugins change host or user if they want
+        self.inits = [(set.get('initcommand'),fabfile) for set,fabfile in self.sets if 'initcommand' in set]
+        for func,fabfile in self.inits:
+            func(cmd)
 
-                print "Hostout: Running command '%(cmd)s' from '%(fabfile)s'" % dict(cmd=cmd,
-                                                                                     fabfile=fabfile)
-                
-                key_filename = api.env.get('identity-file')
-                if key_filename and os.path.exists(key_filename):
-                    api.env.key_filename = key_filename
-                    
-                api.env['host'] = api.env.hosts[0]
-                api.env['host_string']="%(user)s@%(host)s:%(port)s"%api.env
-                api.env.cwd = ''
-                output.debug = True
-                res = func(*cmdargs, **vargs)
-                return res
-            return superfun(funcs, *cmdargs, **vargs)
+        funcs = [(set.get(cmd),fabfile) for set,fabfile in self.sets if cmd in set]
+        if not funcs:
+            print >> sys.stderr, "'%(cmd)s' is not a valid command for host '%(host)s'"%locals()
+            return
+
+        def superfun(funcs, *cmdargs, **vargs):
+            if len(funcs) == 0:
+                return None
+            func,fabfile = funcs[0]
+            api.env['superfun'] = functools.partial(superfun, funcs[1:])
+
+            print "Hostout: Running command '%(cmd)s' from '%(fabfile)s'" % dict(cmd=cmd,
+                                                                                 fabfile=fabfile)
+
+            key_filename = api.env.get('identity-file')
+            if key_filename and os.path.exists(key_filename):
+                api.env.key_filename = key_filename
+
+            api.env['host'] = api.env.hosts[0]
+            api.env['host_string']="%(user)s@%(host)s:%(port)s"%api.env
+            api.env.cwd = ''
+            output.debug = True
+            res = func(*cmdargs, **vargs)
+            return res
+        return superfun(funcs, *cmdargs, **vargs)
 
     def __getattr__(self, name):
         """ call all the methods by this name in fabfiles """
@@ -634,8 +631,11 @@ def main(cfgfile, args):
     else:
         try:
             for host, hostout in hosts:
-                hostout.readsshconfig()
-                hostout.runfabric(cmds, *cmdargs)
+                for cmd in cmds:
+                    if cmd == cmds[-1]:
+                        res = hostout.runcommand(cmd, *cmdargs)
+                    else:
+                        res = hostout.runcommand(cmd)
             print("Done.")
         except SystemExit:
             # a number of internal functions might raise this one.
