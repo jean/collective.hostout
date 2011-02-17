@@ -53,6 +53,11 @@ def predeploy():
     #run('export http_proxy=localhost:8123') # TODO get this from setting
 
     #if api.sudo("[ -e %s ]"%api.env.path, pty=True).succeeded:
+    
+    if os.path.exists(api.env['identity-file']):
+        hostout.bootstrap()
+        hostout.setowners()
+        
     try:
         api.run("[ -e %s/bin/buildout ]"%api.env.path, pty=True)
     except:
@@ -146,7 +151,7 @@ def uploadbuildout():
 #    hostout.setowners()
 
 @buildoutuser
-def buildout():
+def buildout(*args):
     """ Run the buildout on the remote server """
 
     hostout = api.env.hostout
@@ -168,7 +173,7 @@ def buildout():
             pinned = "[buildout]"
             contrib.files.append(pinned, 'pinned.cfg')
         #run generated buildout
-        api.run('bin/buildout -c %s' % filename)
+        api.run('bin/buildout -c %s %s' % (filename, ' '.join(args)))
 
 def postdeploy():
     """Perform any final plugin tasks """

@@ -332,6 +332,8 @@ class HostOut:
     def runcommand(self, cmd, *cmdargs, **vargs):
         self.allcmds()
         api.env['hostout'] = self
+        
+        
 
         if self.firstrun:
             self.resetenv()
@@ -351,6 +353,7 @@ class HostOut:
             if len(funcs) == 0:
                 return None
             func,fabfile = funcs[0]
+            
             api.env['superfun'] = functools.partial(superfun, funcs[1:])
 
             print "Hostout: Running command '%(cmd)s' from '%(fabfile)s'" % dict(cmd=cmd,
@@ -365,8 +368,14 @@ class HostOut:
             api.env.cwd = ''
             output.debug = True
             res = func(*cmdargs, **vargs)
+           
             return res
-        return superfun(funcs, *cmdargs, **vargs)
+        
+        callingsuper = api.env.get('superfun',None)
+        res = superfun(funcs, *cmdargs, **vargs)
+        api.env['superfun'] = callingsuper
+        
+        return res
 
     def __getattr__(self, name):
         """ call all the methods by this name in fabfiles """
