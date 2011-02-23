@@ -53,8 +53,7 @@ def predeploy():
     #run('export http_proxy=localhost:8123') # TODO get this from setting
 
     #if api.sudo("[ -e %s ]"%api.env.path, pty=True).succeeded:
-    
-    if os.path.exists(api.env['identity-file']):
+    if not os.path.exists(api.env.get('identity-file')):
         hostout.bootstrap()
         hostout.setowners()
         
