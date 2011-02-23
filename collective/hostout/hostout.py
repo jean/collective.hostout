@@ -239,7 +239,9 @@ class HostOut:
         files = set()
         for file in self.buildout_cfg:
             files = files.union( set(get_all_extends(file)))
-        files.union(set(self.getBuildoutDependencies()))
+        relative = lambda file: file[len(self.buildout_dir)+1:]
+        includes = [relative(f) for f in self.getBuildoutDependencies()]
+        files = files.union(set(includes))
         files = list(files)
         self.releaseid = '%s_%s'%(time.time(),uuid())
         #self.releaseid = _dir_hash(files)
@@ -455,7 +457,6 @@ class Packages:
         for path in os.listdir(self.dist_dir):
             #path = os.path.join(self.dist_dir, path)
             for dist in interpret_distro_name(self.dist_dir, path, None):
-                    #import pdb; pdb.set_trace()
                     pass
                 
             #egg = pkg_resources.find_distributions(path, only=False)
@@ -483,7 +484,6 @@ class Packages:
                 #HACK should get out of zip file
                 version = dist.version
                 #if 'collective.recipe.filestorage' in dist.project_name:
-                #    import pdb; pdb.set_trace()
                 version += 'dev' not in dist.version and 'dev' or ''
                 version += hash not in dist.version and '-'+hash or ''
                 self.local_eggs[dist.project_name] = (dist.project_name, version, egg)
