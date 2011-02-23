@@ -54,7 +54,7 @@ def predeploy():
 
     #if api.sudo("[ -e %s ]"%api.env.path, pty=True).succeeded:
     
-    if os.path.exists(api.env['identity-file']):
+    if not os.path.exists(api.env['identity-file']):
         hostout.bootstrap()
         hostout.setowners()
         
@@ -78,7 +78,8 @@ def precommands():
 # Make uploadeggs, uploadbuildout and buildout run independent of each other
 # uploadeggs should upload the eggs and write out the versions to a versions file on the host
 # uploadbuildout should upload buildout + dependencies but no version pinning
-# buildout should upload just the generated cfg which instructs which buildout to run. This step should pin versions
+# buildout should upload just the generated cfg which instructs which buildout to r
+# un. This step should pin versions
 # if buildout is run without uploadeggs then no pinned dev eggs versions exist. in which case need
 # to upload dummy pinned versions file.
 
@@ -217,7 +218,7 @@ def bootstrap():
     path = api.env.path
     buildout = api.env['buildout-user']
     buildoutgroup = api.env['buildout-group']
-    api.sudo('mkdir %(path)s & chown %(buildout)s:%(buildoutgroup)s %(path)s' % dict(
+    api.sudo('mkdir -p %(path)s & chown %(buildout)s:%(buildoutgroup)s %(path)s' % dict(
         path=path,
         buildout=buildout,
         buildoutgroup=buildoutgroup,
@@ -305,7 +306,7 @@ def bootstrap_buildout():
     path = api.env.path
     buildout = api.env['buildout-user']
     buildoutgroup = api.env['buildout-group']
-    api.sudo('chown %(buildout)s:%(buildoutgroup)s %(path)s'%locals())
+    api.run('chown %(buildout)s:%(buildoutgroup)s %(path)s'%locals())
 
     buildoutcache = api.env['buildout-cache']
     api.run('mkdir -p %s/eggs' % buildoutcache)
@@ -330,8 +331,15 @@ def bootstrap_buildout():
         api.run('%s bootstrap.py --distribute' % python)
 
 def bootstrap_buildout_ubuntu():
+    
+    api.sudo('apt-get update')
+    
     api.sudo('apt-get -yq install '
              'build-essential ')
+    
+    api.sudo('apt-get -yq install '
+             'python-dev ')
+    
     api.env.hostout.bootstrap_buildout()
 
 def bootstrap_python_buildout():
@@ -413,6 +421,7 @@ def bootstrap_python():
             api.sudo('make altinstall')    
 
 
+
 def bootstrap_python_ubuntu():
     """Update ubuntu with build tools, python and bootstrap buildout"""
     hostout = api.env.get('hostout')
@@ -422,7 +431,13 @@ def bootstrap_python_ubuntu():
     version = api.env['python-version']
     major = '.'.join(version.split('.')[:2])
     
+    
+    
+    
+    api.sudo('apt-get update')
+    
     #Install and Update Dependencies
+    
 
     #contrib.files.append(apt_source, '/etc/apt/source.list', use_sudo=True)
     api.sudo('apt-get -yq update ')

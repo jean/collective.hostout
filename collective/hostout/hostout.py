@@ -242,7 +242,7 @@ class HostOut:
         files.union(set(self.getBuildoutDependencies()))
         files = list(files)
         self.releaseid = '%s_%s'%(time.time(),uuid())
-        self.releaseid = _dir_hash(files)
+        #self.releaseid = _dir_hash(files)
 
         name = '%s/%s_%s.tgz'%(dist_dir,'deploy', self.releaseid)
         self.hostout_package = name
@@ -252,8 +252,8 @@ class HostOut:
         self.tar = tarfile.open(name,"w:gz")
 
         for file in files:
-            #relative = file[len(self.buildout_dir)+1:] #TODO
-            relative = file
+            relative = file[len(self.buildout_dir)+1:] #TODO
+            #relative = file
             self.tar.add(file,arcname=relative)
         self.tar.close()
         return self.hostout_package
@@ -363,8 +363,13 @@ class HostOut:
             if key_filename and os.path.exists(key_filename):
                 api.env.key_filename = key_filename
 
-            api.env['host'] = api.env.hosts[0]
-            api.env['host_string']="%(user)s@%(host)s:%(port)s"%api.env
+            if len(api.env.hosts):
+                api.env['host'] = api.env.hosts[0]
+                api.env['host_string']="%(user)s@%(host)s:%(port)s"%api.env
+            else:
+                api.env['host'] = None
+                api.env['host_string'] = None
+                
             api.env.cwd = ''
             output.debug = True
             res = func(*cmdargs, **vargs)
