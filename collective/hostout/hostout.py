@@ -797,6 +797,17 @@ def getVersion(path):
         return dist.version
 
 
+
+def asbuildoutuser():
+    
+    kwargs = {"user": api.env.hostout.options['buildout-user']}
+    
+    ifile = api.env.get('identity-file')
+    if ifile and os.path.exists(ifile):
+            kwargs["key_filename"] = ifile
+            
+    return api.settings (**kwargs)
+
 class buildoutuser(object):
 
     def __init__(self, f):
@@ -807,6 +818,7 @@ class buildoutuser(object):
         host_string = api.env.host_string
         api.env.user = api.env.hostout.options['buildout-user']
         key_filename = api.env.key_filename
+        
         ifile = api.env.get('identity-file')
         if ifile and os.path.exists(ifile):
             api.env.key_filename = ifile

@@ -2,7 +2,7 @@ import os
 import os.path
 from fabric import api, contrib
 from fabric.contrib.files import append
-from collective.hostout.hostout import buildoutuser
+from collective.hostout.hostout import buildoutuser, asbuildoutuser
 from fabric.context_managers import cd
 from pkg_resources import resource_filename
 import tempfile
@@ -45,7 +45,7 @@ def deploy():
     hostout.buildout()
     hostout.postdeploy()
 
-@buildoutuser
+
 def predeploy():
     """Perform any initial plugin tasks. Call bootstrap if needed"""
     hostout = api.env['hostout']
@@ -54,17 +54,23 @@ def predeploy():
 
     #if api.sudo("[ -e %s ]"%api.env.path, pty=True).succeeded:
 
-    if not os.path.exists(api.env.get('identity-file')):
-        hostout.bootstrap()
-        hostout.setowners()
+    noIdentity = False
+    noBuildout = False
+    with asbuildoutuser():
+        if not os.path.exists(api.env.get('identity-file')):
+            noIdentity = True
         
-    try:
-        api.run("[ -e %s/bin/buildout ]"%api.env.path, pty=True)
-    except:
+        try:
+            hostout.run("[ -e %s/bin/buildout ]"%api.env.path, pty=True)
+        except:
+            noBuildout = True
+    
+    if noIdentity or noBuildout:
         hostout.bootstrap()
         hostout.setowners()
 
     hostout.precommands()
+
     return api.env.superfun()
 
 def precommands():
