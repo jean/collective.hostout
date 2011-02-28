@@ -243,8 +243,8 @@ class HostOut:
         includes = [relative(f) for f in self.getBuildoutDependencies()]
         files = files.union(set(includes))
         files = list(files)
-        self.releaseid = '%s_%s'%(time.time(),uuid())
-        #self.releaseid = _dir_hash(files)
+        #self.releaseid = '%s_%s'%(time.time(),uuid())
+        self.releaseid = _dir_hash(files)
 
         name = '%s/%s_%s.tgz'%(dist_dir,'deploy', self.releaseid)
         self.hostout_package = name
