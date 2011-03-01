@@ -19,12 +19,12 @@ def sudo(*cmd):
     with cd( api.env.path):
         api.sudo(' '.join(cmd))
 
-@buildoutuser
 def put(file, target=None):
     """Upload specified files into the remote buildout folder"""
     if not target:
         target = file
-    api.put(file, target)
+    with asbuildoutuser():
+        api.put(file, target)
 
 @buildoutuser
 def get(file, target=None):
@@ -48,17 +48,12 @@ def deploy():
 
 def predeploy():
     """Perform any initial plugin tasks. Call bootstrap if needed"""
-    hostout = api.env['hostout']
-
-    #run('export http_proxy=localhost:8123') # TODO get this from setting
-
-    #if api.sudo("[ -e %s ]"%api.env.path, pty=True).succeeded:
 
     hasBuildoutUser = True
     hasBuildout = True
     if not os.path.exists(api.env.get('identity-file')):
         hasBuildoutUser = False
-    if hasBuildoutUser:
+    else:
         with asbuildoutuser():
             try:
                 api.run("[ -e %s/bin/buildout ]"%api.env.path, pty=True)
@@ -66,10 +61,10 @@ def predeploy():
                 hasBuildout = False
     
     if not hasBuildoutUser or not hasBuildout:
-        hostout.bootstrap()
-        hostout.setowners()
+        api.env.hostout.bootstrap()
+        api.env.hostout.setowners()
 
-    hostout.precommands()
+    api.env.hostout.precommands()
 
     return api.env.superfun()
 

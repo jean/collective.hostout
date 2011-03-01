@@ -237,6 +237,7 @@ class HostOut:
 
         #config_file = self.buildout_cfg
         files = set()
+        #import pdb; pdb.set_trace()
         for file in self.buildout_cfg:
             files = files.union( set(get_all_extends(file)))
         relative = lambda file: file[len(self.buildout_dir)+1:]
@@ -254,8 +255,7 @@ class HostOut:
         self.tar = tarfile.open(name,"w:gz")
 
         for file in files:
-            relative = file[len(self.buildout_dir)+1:] #TODO
-            #relative = file
+            relative = file
             self.tar.add(file,arcname=relative)
         self.tar.close()
         return self.hostout_package
@@ -805,7 +805,11 @@ def asbuildoutuser():
     ifile = api.env.get('identity-file')
     if ifile and os.path.exists(ifile):
             kwargs["key_filename"] = ifile
-            
+    # we need to reset the host_string
+    kwargs['host'] = api.env.hosts[0]
+    kwargs['port'] = api.env.port
+    kwargs['host_string']="%(user)s@%(host)s:%(port)s"%kwargs
+
     return api.settings (**kwargs)
 
 class buildoutuser(object):
