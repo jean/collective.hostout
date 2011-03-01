@@ -11,13 +11,13 @@ import tempfile
 @buildoutuser
 def run(*cmd):
     """Execute cmd on remote as login user """
-    api.env.cwd = api.env.path
-    api.run(' '.join(cmd))
+    with cd( api.env.path):
+        api.run(' '.join(cmd))
 
 def sudo(*cmd):
     """Execute cmd on remote as root user """
-    api.env.cwd = api.env.path
-    api.sudo(' '.join(cmd))
+    with cd( api.env.path):
+        api.sudo(' '.join(cmd))
 
 @buildoutuser
 def put(file, target=None):
@@ -54,18 +54,18 @@ def predeploy():
 
     #if api.sudo("[ -e %s ]"%api.env.path, pty=True).succeeded:
 
-    noIdentity = False
-    noBuildout = False
-    with asbuildoutuser():
-        if not os.path.exists(api.env.get('identity-file')):
-            noIdentity = True
-        
-        try:
-            hostout.run("[ -e %s/bin/buildout ]"%api.env.path, pty=True)
-        except:
-            noBuildout = True
+    hasBuildoutUser = True
+    hasBuildout = True
+    if not os.path.exists(api.env.get('identity-file')):
+        hasBuildoutUser = False
+    if hasBuildoutUser:
+        with asbuildoutuser():
+            try:
+                api.run("[ -e %s/bin/buildout ]"%api.env.path, pty=True)
+            except:
+                hasBuildout = False
     
-    if noIdentity or noBuildout:
+    if not hasBuildoutUser or not hasBuildout:
         hostout.bootstrap()
         hostout.setowners()
 
