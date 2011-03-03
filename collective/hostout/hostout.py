@@ -240,13 +240,15 @@ class HostOut:
         #import pdb; pdb.set_trace()
         for file in self.buildout_cfg:
             files = files.union( set(get_all_extends(file)))
-        relative = lambda file: file[len(self.buildout_dir)+1:]
-        includes = [relative(f) for f in self.getBuildoutDependencies()]
-        files = files.union(set(includes))
-        files = list(files)
-        #self.releaseid = '%s_%s'%(time.time(),uuid())
-        self.releaseid = _dir_hash(files)
-
+        files = files.union( set(self.getBuildoutDependencies()))
+        
+        filesAbsolute = [os.path.abspath(f) for f in files]
+        filesRelative = [os.path.relpath(f, self.buildout_dir) for f in filesAbsolute]
+        filesAbsRel = zip (filesAbsolute, filesRelative)
+        
+        self.releaseid = _dir_hash(filesAbsolute)
+        
+        
         name = '%s/%s_%s.tgz'%(dist_dir,'deploy', self.releaseid)
         self.hostout_package = name
         #if os.path.exists(name):
@@ -254,9 +256,9 @@ class HostOut:
         #else:
         self.tar = tarfile.open(name,"w:gz")
 
-        for file in files:
-            relative = file
-            self.tar.add(file,arcname=relative)
+        for fileAbs, fileRel in filesAbsRel:
+            self.tar.add(fileAbs,arcname=fileRel)
+            
         self.tar.close()
         return self.hostout_package
 
