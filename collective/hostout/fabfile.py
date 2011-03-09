@@ -2,6 +2,7 @@ import os
 import os.path
 from fabric import api, contrib
 from fabric.contrib.files import append
+import fabric.contrib.project
 from collective.hostout.hostout import buildoutuser, asbuildoutuser
 from fabric.context_managers import cd
 from pkg_resources import resource_filename
@@ -20,11 +21,32 @@ def sudo(*cmd):
         api.sudo(' '.join(cmd))
 
 def put(file, target=None):
-    """Upload specified files into the remote buildout folder"""
-    if not target:
-        target = file
+    """Recursively upload specified files into the remote buildout folder"""
+    if os.path.isdir(file):
+        uploads = os.walk(file)
+    else:
+        uploads = None, None, [file]
     with asbuildoutuser():
-        api.put(file, target)
+        for root, dirs, files in uploads:
+            for dir in dirs:
+                with cd(api.env.path):
+                    api.run('mkdir -p %s'% root +'/'+ dir)
+            for file in files:
+                file = root + '/' + file
+                print file
+                if not target:
+                    target = file
+                if target[0] != '/':
+                    target = api.env.path + '/' + target
+                api.put(file, target)
+
+def putrsync(dir):
+    """ rsync a local buildout folder with the remote buildout """
+    with asbuildoutuser():
+        parent = '/'.join(dir.split('/')[:-1])
+        remote = api.env.path + '/' + parent
+
+        fabric.contrib.project.rsync_project(remote_dir=remote, local_dir = dir)
 
 @buildoutuser
 def get(file, target=None):
@@ -407,19 +429,20 @@ def bootstrap_python():
     version = api.env['python-version']
     major = '.'.join(version.split('.')[:2])
     majorshort = major.replace('.','')
-    d = dict(major=major)
+    d = dict(version=version)
     
     
     with cd('/tmp'):
-        api.run('curl http://python.org/ftp/python/%(major)s/Python-%(major)s.tgz > Python-%(major)s.tgz'%d)
-        api.run('tar xzf Python-%(major)s.tgz'%d)
-        with cd('Python-%(major)s'%d):
+        api.run('curl http://python.org/ftp/python/%(version)s/Python-%(version)s.tgz > Python-%(version)s.tgz'%d)
+        api.run('tar xzf Python-%(version)s.tgz'%d)
+        with cd('Python-%(version)s'%d):
 #            api.run("sed 's/#readline/readline/' Modules/Setup.dist > TMPFILE && mv TMPFILE Modules/Setup.dist")
 #            api.run("sed 's/#_socket/_socket/' Modules/Setup.dist > TMPFILE && mv TMPFILE Modules/Setup.dist")
             
             api.run('./configure  --enable-unicode=ucs4 --with-threads --with-readline --with-dbm --with-zlib --with-ssl --with-bz2')
             api.run('make')
-            api.sudo('make altinstall')    
+            api.sudo('make altinstall')
+        api.run("rm -rf /tmp/Python-%(version)s"%d)
 
 
 
