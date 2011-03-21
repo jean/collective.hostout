@@ -1,13 +1,31 @@
 Release History
 ***************
 
+1.0a5 (2010-03-21)
+------------------
+
+- Made deployment steps more discrete. uploadbuildout, uploadeggs and buildout make sense to be called by themselves.
+This changes the generated buildout .cfg files. [Dylan Jay]
+- Commands can now return values and have named arguments [Dylan Jay]
+- Changed how overridden commands called base command by introducing env.superfun [Dylan Jay, Adam Terrey]
+- Allow args to the buildout command [Dylan Jay]
+- added asbuildoutuser function decorator [Adam Terrey]
+- added an apt-get update as part of the bootstrap [Adam Terrey]
+- Put command and rsync command [Dylan Jay]
+- fix bootstrap_python to use specific dot version. [Dylan Jay]
+- Made file path names more robust when collecting files for hashing during getHostoutPackage [Adam Terrey]
+- remove buildout as a dep so scripts won't rebuild buildout script [Dylan Jay]
+- Normal buildout should no longer need sudo user, just buildout-user. [Dylan Jay, Adam Terrey]
+- Will bootstrap if no buildoutuser exists rather than ask for password [Adam Terrey]
+- Fixed typos in docs [Jean Jordaan]
+
 
 1.0a4 (2010-01-06)
 ------------------
 - using decorators for setting user used for command
 - cleaned up user adding code. renamed to bootstrap_users
 - BUG: two hostout parts with different extends= values won't create two separate command stacks
-  but instead one combined one. 
+  but instead one combined one.
 - BUG: extends was global to all hostouts [Fulvio Casali]
 - merged hostout.ubuntu and hostout.redhat back into core. These are now deprecated.
 - broke bootstrap step into bootstrap_users bootstrap_python bootstrap_buildout
