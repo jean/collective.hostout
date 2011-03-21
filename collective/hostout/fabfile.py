@@ -203,7 +203,7 @@ def postdeploy():
     """Perform any final plugin tasks """
 
     hostout = api.env.get('hostout')
-    hostout.setowners()
+    #hostout.setowners()
 
     hostout.getHostoutPackage() # we need this work out releaseid
     filename = "%s-%s.cfg" % (hostout.name, hostout.releaseid)
