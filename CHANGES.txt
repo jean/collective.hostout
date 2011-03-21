@@ -5,7 +5,7 @@ Release History
 ------------------
 
 - Made deployment steps more discrete. uploadbuildout, uploadeggs and buildout make sense to be called by themselves.
-This changes the generated buildout .cfg files. [Dylan Jay]
+  This changes the generated buildout .cfg files. [Dylan Jay]
 - Commands can now return values and have named arguments [Dylan Jay]
 - Changed how overridden commands called base command by introducing env.superfun [Dylan Jay, Adam Terrey]
 - Allow args to the buildout command [Dylan Jay]
