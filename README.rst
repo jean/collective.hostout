@@ -188,7 +188,7 @@ server. It will then look for ``/var/buildout/demo/bin/buildout`` and when it do
 find it it will automatically run another hostout command called ``bootstrap``.
 
 Bootstrap is further broken down into three commands, bootstrap_users,
-bootstrap_python and bootstrap_buildout. These will create an additional user
+bootstrap_python and bootstrap_buildout. These will create an additional buildout-user
 to build and run your application, install basic system packages needed to
 run buildout and install buildout into your remote path. It will attempt to
 detect which version of linux your server is running to os python, but if this
@@ -203,17 +203,23 @@ by running the following commands:
   
 1. "uploadeggs": Any develop eggs are released as eggs and uploaded to the server. These will be
 uploaded directly into the buildout's buildout-cache/downloads/dist directory which buildout
-uses to find packages before looking up the package index. It's very important your development
-packages package properly by including all the relevant files. The easiest way to do this
-is by using source control, checking in all your source files and installing the relevant
-setuptools plugin for your source control. e.g. for git do "easy_install setuptools-git".
+uses to find packages before looking up the package index.
+It's very important the packages under development work when packaged, ie are capable of
+being packaged via "python setup.py sdist". A common mistake is when relying on setuptools
+to automatically detect which files should be included but not have the correct
+setuptools SCM helpers installed if you are using git or hg e.g. for git do "easy_install setuptools-git".
+This will also upload a "pinned.cfg" which contains the generated version numbers for
+the packages under development that have been uploaded.
 
-Tip: An excellent tool for this is `mkrelease <http://pypi.python.org/pypi/jarn.mkrelease>`_. Highly recommended!
-  
 2. "uploadbuildout": The relevant .cfg files and any files/directories in the "include"
 parameter are synced to the remote server.
   
-3. "buildout": The uploaded production buildout is run on the remote server.
+3. "buildout": Upload a final "pinned.cfg" which includes the generated development
+package versions pins + all the versions of all the dependencies of the development
+buildout from where the system is being deployed from. These discovered pinned versions
+are recorded during the local buildout process by the hostout recipe and recorded in
+a local "hostoutversions.cfg" file.
+Buildout is then run on the remote production buildout.
 
 If you continue to develop your application you can run ``hostout deploy`` each time
 and it will only upload the eggs that have changed and buildout will only reinstall
@@ -233,7 +239,6 @@ In our example above deployment would look something like this ::
     Hostout: Develop egg src/demo changed. Releasing with hash ...
     Hostout: Eggs to transport:
     	demo = 0.0.0dev-...
-    Hostout: Wrote versions to host1.cfg
     ...
     Hostout: Running command 'uploadbuildout' from 'collective.hostout'
     ...
@@ -510,6 +515,33 @@ cmdline is: bin/hostout host1 [host2...] [all] cmd1 [cmd2...] [arg1 arg2...]
 Valid commands are:
 ...
    mycommand        : example of command from hostout.myplugin
+
+Your fabfile can get access parameters passed in the commandline by
+defining them in your function. e.g. ::
+
+  def mycommand(cmdline_param1, cmdline_param2):
+      pass
+
+Your fabfile commands can override any of the standard hostout commands. For instance
+if you which your plugin to hook into the predeploy process then just add a predeploy
+function to your fabfile.py ::
+
+  def predeploy():
+     api.env.superfun()
+
+It is important when overridding to call the "superfun" function so any overridden functions
+are also called.
+
+You can also call any other hostout functions from your command ::
+
+  def mycommand():
+    api.env.hostout.deploy()
+
+The options set in the buildout part are available via the Fabric api.env variable and also
+via "api.env.hostout.options".
+
+
+
 
 
 #TODO Example of echo plugin
