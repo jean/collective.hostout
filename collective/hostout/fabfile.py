@@ -1,7 +1,7 @@
 import os
 import os.path
 from fabric import api, contrib
-from fabric.contrib.files import append
+import fabric.contrib.files
 import fabric.contrib.project
 from collective.hostout.hostout import buildoutuser, asbuildoutuser
 from fabric.context_managers import cd
@@ -308,7 +308,7 @@ def bootstrap_users():
     owner = buildout
     
     api.sudo('groupadd %s || echo "group exists"' % buildoutgroup)
-    addopt = "--no-user-group -M -g %s" % buildoutgroup
+    addopt = " -M -g %s" % buildoutgroup
     api.sudo('egrep ^%(owner)s: /etc/passwd || useradd %(owner)s %(addopt)s' % dict(owner=owner, addopt=addopt))
     api.sudo('egrep ^%(effective)s: /etc/passwd || useradd %(effective)s %(addopt)s' % dict(effective=effective, addopt=addopt))
     api.sudo('gpasswd -a %(owner)s %(buildoutgroup)s' % dict(owner=owner, buildoutgroup=buildoutgroup))
@@ -319,7 +319,7 @@ def bootstrap_users():
     for owner in [api.env['buildout-user']]:
         api.sudo("mkdir -p ~%s/.ssh" % owner)
         api.sudo('touch ~%s/.ssh/authorized_keys' % owner)
-        append(key, '~%s/.ssh/authorized_keys' % owner, use_sudo=True)
+        fabric.contrib.files.append('~%s/.ssh/authorized_keys' % owner, key, use_sudo=True)
         api.sudo("chown -R %(owner)s ~%(owner)s/.ssh" % locals() )
 
 @buildoutuser
@@ -418,7 +418,7 @@ extra_options +=
             api.sudo('curl -O http://python-distribute.org/distribute_setup.py')
             api.sudo('python distribute_setup.py')
             api.sudo('python bootstrap.py --distribute')
-            append(BUILDOUT%locals(), 'buildout.cfg', use_sudo=True)
+            fabric.contrib.files.append('buildout.cfg', BUILDOUT%locals(), use_sudo=True)
             api.sudo('bin/buildout')
     api.env['python'] = "source /var/buildout-python/python/python-%(major)s/bin/activate; python "
         
@@ -517,20 +517,23 @@ def bootstrap_python_redhat():
     version = api.env['python-version']
     python_versioned = 'python' + ''.join(version.split('.')[:2])
 
-    api.sudo('yum -y install gcc gcc-c++ ')
+    try:
+        api.sudo('yum -y install gcc gcc-c++ ')
 
-    api.sudo('yum -y install ' +
-             python_versioned + ' ' +
-             python_versioned + '-devel ' + 
-             'python-setuptools '
-             'libxml2-python '
-             'python-elementtree '
-             'ncurses-devel '
-             'zlib zlib-devel '
-             'readline-devel '
-             'bzip2-devel '
-             'openssl openssl-dev '
-             )
+        api.sudo('yum -y install ' +
+                 python_versioned + ' ' +
+                 python_versioned + '-devel ' +
+                 'python-setuptools '
+                 'libxml2-python '
+                 'python-elementtree '
+                 'ncurses-devel '
+                 'zlib zlib-devel '
+                 'readline-devel '
+                 'bzip2-devel '
+                 'openssl openssl-dev '
+                 )
+    except:
+        hostout.bootstrap_python()
 
 #optional stuff
 #    api.sudo('yum -y install ' +
@@ -550,8 +553,9 @@ def bootstrap_python_redhat():
 
 def detecthostos():
     #http://wiki.linuxquestions.org/wiki/Find_out_which_linux_distribution_a_system_belongs_to
+    # extra ; because of how fabric uses bash now
     hostos = api.run(
-        "([ -e /etc/SuSE-release ] && echo SuSE) || "
+        ";([ -e /etc/SuSE-release ] && echo SuSE) || "
                 "([ -e /etc/redhat-release ] && echo redhat) || "
                 "([ -e /etc/fedora-release ] && echo fedora) || "
                 "(lsb_release -is) || "
