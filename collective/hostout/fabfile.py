@@ -319,7 +319,9 @@ def bootstrap_users():
     for owner in [api.env['buildout-user']]:
         api.sudo("mkdir -p ~%s/.ssh" % owner)
         api.sudo('touch ~%s/.ssh/authorized_keys' % owner)
-        append(key, '~%s/.ssh/authorized_keys' % owner, use_sudo=True)
+        append( text=key,
+                filename='~%s/.ssh/authorized_keys' % owner,
+                use_sudo=True )
         api.sudo("chown -R %(owner)s ~%(owner)s/.ssh" % locals() )
 
 @buildoutuser
