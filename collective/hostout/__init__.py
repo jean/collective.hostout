@@ -159,7 +159,7 @@ class Recipe:
             self.script = zc.recipe.egg.Scripts(self.buildout, self.options['recipe'], self.options)
             installed = installed +  self.script.install()
 
-        return installed + [self.optionsfile] 
+        return list(installed) + [self.optionsfile]
 
     def update(self):
         installed = []
