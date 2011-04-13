@@ -45,7 +45,8 @@ Todo list
   Integrate zopeskel or similar create a production.cfg. Could do the same for wsgi or django.
   Perhaps ploneboutique can help here
 
-- Ensure we can support workflow where no hashed packages are used and instead a private egg cache is used and version numbers have to be incrented to make a release
+- Ensure we can support workflow where no hashed packages are used and instead a private egg cache is used and version
+  numbers have to be incremented to make a release
 
 - create a command to download a remote buildout, including pinned versions and develp eggs.
 
@@ -55,4 +56,7 @@ Todo list
 
 - dry run feature. Show combined fab commands before with actually running them.  help developers decide
 if they want to use the system or not.
+
+- need to handle case where multiple buildouts on one machine have different buildout users. buildout cache
+  permissions then becomes an issue. maybe need buildout-cache group.
 

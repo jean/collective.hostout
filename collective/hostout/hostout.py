@@ -245,7 +245,6 @@ class HostOut:
         filesAbsolute = [os.path.abspath(f) for f in files]
         filesRelative = [os.path.relpath(f, self.buildout_dir) for f in filesAbsolute]
         filesAbsRel = zip (filesAbsolute, filesRelative)
-        
         self.releaseid = _dir_hash(filesAbsolute)
         
         
