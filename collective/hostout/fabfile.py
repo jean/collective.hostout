@@ -199,6 +199,14 @@ def buildout(*args):
         #run generated buildout
         api.run('bin/buildout -c %s %s' % (filename, ' '.join(args)))
 
+def sudobuildout(*args):
+    hostout = api.env.get('hostout')
+    hostout.getHostoutPackage() # we need this work out releaseid
+    filename = "%s-%s.cfg" % (hostout.name, hostout.releaseid)
+    with cd(api.env.path):
+        api.sudo('bin/buildout -c %s %s' % (filename, ' '.join(args)))
+    
+
 def postdeploy():
     """Perform any final plugin tasks """
 
@@ -238,21 +246,6 @@ def bootstrap():
         cmd = getattr(api.env.hostout, 'bootstrap_python_%s'%hostos, api.env.hostout.bootstrap_python)
         cmd()
 
-    path = api.env.path
-    buildout = api.env['buildout-user']
-    buildoutgroup = api.env['buildout-group']
-    api.sudo('mkdir -p %(path)s & chown %(buildout)s:%(buildoutgroup)s %(path)s' % dict(
-        path=path,
-        buildout=buildout,
-        buildoutgroup=buildoutgroup,
-    ))
-
-    buildoutcache = api.env['buildout-cache']
-    api.sudo('mkdir -p %s/eggs' % buildoutcache)
-    api.sudo('mkdir -p %s/downloads/dist' % buildoutcache)
-    api.sudo('mkdir -p %s/extends' % buildoutcache)
-    api.sudo('chown -R %s:%s %s' % (buildout, buildoutgroup, buildoutcache))
-
     cmd = getattr(api.env.hostout, 'bootstrap_buildout_%s'%hostos, api.env.hostout.bootstrap_buildout)
     cmd()
 
@@ -270,25 +263,25 @@ def setowners():
     bc = hostout.buildout_cache
     dl = hostout.getDownloadCache()
     dist = os.path.join(dl, 'dist')
-    bc = hostout.getEggCache()
+    ec = hostout.getEggCache()
     var = os.path.join(path, 'var')
     
     # What we want is for
     # - login user to own the buildout and the cache.
     # - effective user to be own the var dir + able to read buildout and cache.
     
-    api.sudo("find %(path)s  -maxdepth 0 ! -name var -exec chown -R %(buildout)s:%(buildoutgroup)s '{}' \; "
+    api.sudo("find %(path)s  -maxdepth 0 ! -name var -exec chown -R %(buildout)s:%(buildoutgroup)s '{}' \; " \
              " -exec chmod -R u+rw,g+r-w,o-rw '{}' \;" % locals())
-    api.sudo('mkdir -p %(var)s && chown -R %(effective)s:%(buildoutgroup)s %(var)s && '
+    api.sudo('mkdir -p %(var)s && chown -R %(effective)s:%(buildoutgroup)s %(var)s && ' \
              ' chmod -R u+rw,g+wrs,o-rw %(var)s ' % locals())
 #    api.sudo("chmod g+x `find %(path)s -perm -g-x` || find %(path)s -perm -g-x -exec chmod g+x '{}' \;" % locals()) #so effective can execute code
 #    api.sudo("chmod g+s `find %(path)s -type d` || find %(path)s -type d -exec chmod g+s '{}' \;" % locals()) # so new files will keep same group
 #    api.sudo("chmod g+s `find %(path)s -type d` || find %(path)s -type d -exec chmod g+s '{}' \;" % locals()) # so new files will keep same group
     
-    for cache in [bc, dl, bc]:
+    for cache in [bc, dl, ec]:
         #HACK Have to deal with a shared cache. maybe need some kind of group
-        api.sudo('mkdir -p %(cache)s && chown -R %(buildout)s:%(buildoutgroup)s %(cache)s && '
-                 ' chmod -R u+rw,a+r %(cache)s ' % locals())
+        api.sudo('mkdir -p %(cache)s && chown -R %(buildout)s:%(buildoutgroup)s %(cache)s && ' \
+                 ' chmod -R ug+rw,a+r %(cache)s ' % locals())
 
     #api.sudo('sudo -u $(effectiveuser) sh -c "export HOME=~$(effectiveuser) && cd $(install_dir) && bin/buildout -c $(hostout_file)"')
 
@@ -322,36 +315,56 @@ def bootstrap_users():
         fabric.contrib.files.append('~%s/.ssh/authorized_keys' % owner, key, use_sudo=True)
         api.sudo("chown -R %(owner)s ~%(owner)s/.ssh" % locals() )
 
-@buildoutuser
 def bootstrap_buildout():
     """ Create an initialised buildout directory """
     # bootstrap assumes that correct python is already installed
+
+
+    # First ensure all needed directories are created and have right permissions
     path = api.env.path
     buildout = api.env['buildout-user']
     buildoutgroup = api.env['buildout-group']
-    api.run('chown %(buildout)s:%(buildoutgroup)s %(path)s'%locals())
+    # create buildout dir
+    api.sudo('mkdir -p -m ug+x %(path)s && chown %(buildout)s:%(buildoutgroup)s %(path)s' % dict(
+        path=path,
+        buildout=buildout,
+        buildoutgroup=buildoutgroup,
+    ))
+    # ensure buildout user and group and cd in (ug+x)
+    parts = path.split('/')
+    for i in range(2, len(parts)):
+        api.sudo('chmod ug+x %s' % '/'.join(parts[:i]) )
+
+
 
     buildoutcache = api.env['buildout-cache']
-    api.run('mkdir -p %s/eggs' % buildoutcache)
-    api.run('mkdir -p %s/downloads/dist' % buildoutcache)
-    api.run('mkdir -p %s/extends' % buildoutcache)
+    api.sudo('mkdir -p %s/eggs' % buildoutcache)
+    api.sudo('mkdir -p %s/downloads/dist' % buildoutcache)
+    api.sudo('mkdir -p %s/extends' % buildoutcache)
+    api.sudo('chown -R %s:%s %s' % (buildout, buildoutgroup, buildoutcache))
+    api.env.hostout.setowners()
+
+#    api.run('mkdir -p %s/eggs' % buildoutcache)
+#    api.run('mkdir -p %s/downloads/dist' % buildoutcache)
+#    api.run('mkdir -p %s/extends' % buildoutcache)
     #api.run('chown -R %s:%s %s' % (buildout, buildoutgroup, buildoutcache))
 
-    bootstrap = resource_filename(__name__, 'bootstrap.py')
-    with cd(path):
-        api.put(bootstrap, '%s/bootstrap.py' % path)
-    
-        # put in simplest buildout to get bootstrap to run
-        api.run('echo "[buildout]" > buildout.cfg')
+    with asbuildoutuser():
+        bootstrap = resource_filename(__name__, 'bootstrap.py')
+        with cd(path):
+            api.put(bootstrap, '%s/bootstrap.py' % path)
 
-        python = api.env.get('python')
-        if not python or python == 'buildout':
+            # put in simplest buildout to get bootstrap to run
+            api.run('echo "[buildout]" > buildout.cfg')
 
-            version = api.env['python-version']
-            major = '.'.join(version.split('.')[:2])
-            python = "python%s" % major
-    
-        api.run('%s bootstrap.py --distribute' % python)
+            python = api.env.get('python')
+            if not python or python == 'buildout':
+
+                version = api.env['python-version']
+                major = '.'.join(version.split('.')[:2])
+                python = "python%s" % major
+
+            api.run('%s bootstrap.py --distribute' % python)
 
 def bootstrap_buildout_ubuntu():
     
@@ -434,7 +447,7 @@ def bootstrap_python():
     
     with cd('/tmp'):
         api.run('curl http://python.org/ftp/python/%(version)s/Python-%(version)s.tgz > Python-%(version)s.tgz'%d)
-        api.run('tar xzf Python-%(version)s.tgz'%d)
+        api.run('tar -xzf Python-%(version)s.tgz'%d)
         with cd('Python-%(version)s'%d):
 #            api.run("sed 's/#readline/readline/' Modules/Setup.dist > TMPFILE && mv TMPFILE Modules/Setup.dist")
 #            api.run("sed 's/#_socket/_socket/' Modules/Setup.dist > TMPFILE && mv TMPFILE Modules/Setup.dist")
