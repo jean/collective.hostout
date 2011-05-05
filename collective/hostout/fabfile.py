@@ -611,3 +611,98 @@ def bootstrap_allowsudo():
 #        api.env.key_filename = key_filename
 
 
+
+
+def install_bootscript (startcmd, stopcmd, prefname=""):
+    """Installs a system bootscript"""
+    hostout = api.env.hostout
+    
+    buildout = hostout.getRemoteBuildoutPath()
+    name = "buildout-" + (prefname or hostout.name)
+
+    script = """
+#!/bin/sh
+#
+# Supervisor init script.
+#
+# chkconfig: 2345 80 20
+# description: supervisord
+
+# Source function library.
+#. /etc/rc.d/init.d/functions
+
+ENV=plonedev
+NAME="%(name)s"
+BUILDOUT=%(buildout)s
+RETVAL=0
+
+start() {
+    echo -n "Starting $NAME: "
+    pushd $BUILDOUT
+    %(startcmd)s
+    RETVAL=$?
+    popd
+    echo
+    return $RETVAL
+}
+
+stop() {
+    echo -n "Stopping $NAME: "
+    pushd $BUILDOUT
+    %(stopcmd)s
+    RETVAL=$?
+    popd
+    echo
+    return $RETVAL
+}
+
+case "$1" in
+	 start)
+	     start
+	     ;;
+
+	 stop)
+	     stop
+	     ;;
+
+	 restart)
+	     stop
+	     start
+	     ;;
+esac
+
+exit $REVAL
+    """ % locals()
+
+    path = os.path.join("/etc/init.d", name)
+    
+    # Create script destroying one if it already exists
+    api.sudo ("test -f '%(path)s' && rm '%(path)s' || echo 'pass'" % locals())
+    contrib.files.append(
+        text=script,
+        filename=path, 
+        use_sudo=True )
+    api.sudo ("chmod +x '%(path)s'" % locals())
+    
+    
+    # Install script into system rc dirs
+    api.sudo (  (";(which update-rc.d && update-rc.d '%(name)s' defaults) || "
+                "(test -f /sbin/chkconfig && /sbin/chkconfig --add '%(name)s')") % locals() )
+        
+
+def uninstall_bootscript (prefname=""):
+    """Uninstalls a system bootscript"""
+    name = "buildout-" + (prefname or hostout.name)	
+    path = os.path.join("/etc/init.d", name)
+    api.sudo ((";(which update-rc.d && update-rc.d -f '%(name)s' remove) || "
+              "(test -f /sbin/chkconfig && (/sbin/chkconfig --del '%(name)s' || echo 'pass' ))") % locals())
+    api.sudo ("test -f '%(path)s' && rm '%(path)s' || echo 'pass'" % locals())
+
+
+def bootscript_list():
+    """Lists the buildout bootscripts that are currently installed on the host"""
+    api.run ("ls /etc/init.d/buildout-*")
+
+
+
+

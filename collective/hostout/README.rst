@@ -165,17 +165,20 @@ on what fabfiles your hostout references.
 >>> print system('bin/hostout host1')
 cmdline is: bin/hostout host1 [host2...] [all] cmd1 [cmd2...] [arg1 arg2...]
 Valid commands are:
-   bootstrap        : Install python and users needed to run buildout
-   buildout         : Run the buildout on the remote server
-   deploy           : predeploy, uploadeggs, uploadbuildout, buildout and then postdeploy
-   postdeploy       : Perform any final plugin tasks
-   predeploy        : Install buildout and its dependencies if needed. Hookpoint for plugins
-   setupusers       : create buildout and the effective user and allow hostout access
-   setowners        : Ensure ownership and permissions are correct on buildout and cache
-   run              : Execute cmd on remote as login user
-   sudo             : Execute cmd on remote as root user
-   uploadbuildout   : Upload buildout pinned to local picked versions + uploaded eggs
-   uploadeggs       : Any develop eggs are released as eggs and uploaded to the server
+   bootscript_list      : Lists the buildout bootscripts that are currently installed on the host
+   bootstrap            : Install python and users needed to run buildout
+   buildout             : Run the buildout on the remote server
+   deploy               : predeploy, uploadeggs, uploadbuildout, buildout and then postdeploy
+   install_bootscript   : Installs a system bootscript
+   postdeploy           : Perform any final plugin tasks
+   predeploy            : Install buildout and its dependencies if needed. Hookpoint for plugins
+   setupusers           : create buildout and the effective user and allow hostout access
+   setowners            : Ensure ownership and permissions are correct on buildout and cache
+   run                  : Execute cmd on remote as login user
+   sudo                 : Execute cmd on remote as root user
+   uninstall_bootscript : Uninstalls a system bootscript
+   uploadbuildout       : Upload buildout pinned to local picked versions + uploaded eggs
+   uploadeggs           : Any develop eggs are released as eggs and uploaded to the server
 <BLANKLINE>
 
 The run command is helpful to run quick remote commands as the buildout user on the remote host
@@ -384,6 +387,31 @@ Bootstrap not only installs buildout but
 also installs the correct version of python, development tools, needed libraries and creates users needed to
 manage the buildout. The buildin bootstrap may not work for all versions of linux so look
 for hostout plugins that match the distribution of linux you installed.
+
+
+Managing Bootscripts
+--------------------
+
+Hostout can generate bootscripts to run commands in your buildout directory on the host during startup and
+shutdown.
+
+>>> system('bin/hostout host1 "bin/srvctrl start" "bin/srvctrl stop" myinstance')
+
+Will create the boot script /etc/init.d/buildout-myinstance and install the script into the appreopreate 
+run levels using the system's run level management (Debian based and RedHat systems currently supported).
+
+The myinstance identifiyer is optional, if it is not supplied the hostout name will be used which 
+is "host1" in this case resulting in boot script /etc/init.d/buildout-host1
+
+>>> system('bin/hostout host1 list_bootscripts')
+
+Displays all the bootscripts in the /etc/init.d directory matching buildout-*
+
+>>> system('bin/hostout host1 uninstall_bootscript myinstance')
+
+Will remove the bootscript and unregister it from the run levels.
+
+
 
 Deploy options
 --------------
