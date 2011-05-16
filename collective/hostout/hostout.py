@@ -35,6 +35,8 @@ from setuptools import package_index
 from urllib import pathname2url
 import StringIO
 import functools
+from optparse import OptionParser
+
 
 
 """
@@ -579,6 +581,13 @@ class Packages:
 
 def main(cfgfile, args):
     "execute the fabfile we generated"
+
+    parser = OptionParser()
+    parser.add_option("-c", "--configuration", dest="cfgfile", default=cfgfile,
+                      help="hostout configuration file", metavar="FILE")
+    
+    (options, args) = parser.parse_args()
+    cfgfile = options.cfgfile
 
     config = ConfigParser.ConfigParser()
     config.optionxform = str
