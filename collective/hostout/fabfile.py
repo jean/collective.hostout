@@ -299,11 +299,12 @@ def bootstrap_users():
     effective = api.env['effective-user']
     buildoutgroup = api.env['buildout-group']
     owner = buildout
-    
+
     api.sudo('groupadd %s || echo "group exists"' % buildoutgroup)
     addopt = " -M -g %s" % buildoutgroup
-    api.sudo('egrep ^%(owner)s: /etc/passwd || useradd %(owner)s %(addopt)s' % dict(owner=owner, addopt=addopt))
-    api.sudo('egrep ^%(effective)s: /etc/passwd || useradd %(effective)s %(addopt)s' % dict(effective=effective, addopt=addopt))
+    addopt_noM = " -g %s" % buildoutgroup
+    api.sudo('egrep ^%(owner)s: /etc/passwd || useradd %(addopt)s %(owner)s || useradd %(addopt_noM)s %(owner)s' % dict(owner=owner, addopt=addopt, addopt_noM=addopt_noM))
+    api.sudo('egrep ^%(effective)s: /etc/passwd || useradd %(addopt)s %(effective)s || useradd %(addopt_noM)s %(effective)s' % dict(effective=effective, addopt=addopt, addopt_noM=addopt_noM))
     api.sudo('gpasswd -a %(owner)s %(buildoutgroup)s' % dict(owner=owner, buildoutgroup=buildoutgroup))
     api.sudo('gpasswd -a %(effective)s %(buildoutgroup)s' % dict(effective=effective, buildoutgroup=buildoutgroup))
 
@@ -701,7 +702,7 @@ def uninstall_bootscript (prefname=""):
 
 def bootscript_list():
     """Lists the buildout bootscripts that are currently installed on the host"""
-    api.run ("ls /etc/init.d/buildout-*")
+    api.run ("ls -l /etc/init.d/buildout-*")
 
 
 
