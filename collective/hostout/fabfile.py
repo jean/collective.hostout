@@ -443,9 +443,10 @@ extra_options +=
 
 def bootstrap_python():
     version = api.env['python-version']
-    major = '.'.join(version.split('.')[:2])
-    majorshort = major.replace('.','')
-    d = dict(version=version)
+
+    versionParsed = '.'.join(version.split('.')[:3])
+    
+    d = dict(version=versionParsed)
     
     
     with cd('/tmp'):
