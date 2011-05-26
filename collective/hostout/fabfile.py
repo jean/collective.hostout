@@ -219,7 +219,8 @@ def postdeploy():
     if sudoparts:
         with cd(api.env.path):
             api.sudo('bin/buildout -c %(filename)s install %(sudoparts)s' % locals())
- 
+
+
     with cd(api.env.path):
         for cmd in hostout.getPostCommands():
             api.sudo('sh -c "%s"'%cmd)
