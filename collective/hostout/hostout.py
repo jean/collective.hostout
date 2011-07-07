@@ -122,8 +122,8 @@ class HostOut:
         self.parts = [p.strip() for p in opt.get('parts','').split() if p.strip()]
         self.buildout_cache = opt.get('buildout-cache','')
         opt['download_cache']= "%s/%s" % (self.buildout_cache, 'downloads')
+        install_base = os.path.dirname(self.getRemoteBuildoutPath())
         if not self.buildout_cache:
-            install_base = os.path.dirname(self.getRemoteBuildoutPath())
             self.buildout_cache = os.path.join(install_base,'buildout-cache')
             opt['buildout-cache'] = self.buildout_cache
 
@@ -141,6 +141,9 @@ class HostOut:
         self.options['effective-user'] = self.options.get('effective-user') or self.user or 'root'
         self.options['buildout-user'] = self.options.get('buildout-user') or self.user or 'root'
 
+        self.options["system-python-use-not"] = self.options.get("system-python-use-not") or False
+        self.options["python-prefix"] = self.options.get("python-prefix", os.path.join(install_base, "python"))
+        
         self.firstrun = True
 
     def getPreCommands(self):

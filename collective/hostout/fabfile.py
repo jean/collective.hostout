@@ -240,9 +240,13 @@ def bootstrap():
     cmd = getattr(api.env.hostout, 'bootstrap_users_%s'%hostos, api.env.hostout.bootstrap_users)
     cmd()
 
-    #if api.run('python%(major)s --version'%d).succeeded:
+    if self.env["system-python-use-not"]:
+        python = os.path.join (self.env["python-prefix"], "bin/python")
+    else:
+        python = 'python%(major)s' % d
+
     try:
-        api.run('python%(major)s --version'%d)
+        api.run(python + " --version")
     except:
         cmd = getattr(api.env.hostout, 'bootstrap_python_%s'%hostos, api.env.hostout.bootstrap_python)
         cmd()
@@ -449,6 +453,8 @@ def bootstrap_python():
     
     d = dict(version=versionParsed)
     
+    prefix = api.env["python-prefix"]
+    api.run('mkdir -p %s' % prefix)
     
     with cd('/tmp'):
         api.run('curl http://python.org/ftp/python/%(version)s/Python-%(version)s.tgz > Python-%(version)s.tgz'%d)
@@ -457,9 +463,9 @@ def bootstrap_python():
 #            api.run("sed 's/#readline/readline/' Modules/Setup.dist > TMPFILE && mv TMPFILE Modules/Setup.dist")
 #            api.run("sed 's/#_socket/_socket/' Modules/Setup.dist > TMPFILE && mv TMPFILE Modules/Setup.dist")
             
-            api.run('./configure  --enable-unicode=ucs4 --with-threads --with-readline --with-dbm --with-zlib --with-ssl --with-bz2')
+            api.run('./configure --prefix=%(prefix)s  --enable-unicode=ucs4 --with-threads --with-readline --with-dbm --with-zlib --with-ssl --with-bz2' % locals())
             api.run('make')
-            api.sudo('make altinstall')
+            api.run('make altinstall')
         api.run("rm -rf /tmp/Python-%(version)s"%d)
 
 
