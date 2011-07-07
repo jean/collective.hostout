@@ -803,9 +803,16 @@ def asbuildoutuser():
     
     kwargs = {"user": api.env.hostout.options['buildout-user']}
     
-    ifile = api.env.get('identity-file')
-    if ifile and os.path.exists(ifile):
-            kwargs["key_filename"] = ifile
+    
+    # Select Authentication method
+    password = api.env.hostout.options.get("buildout-password")
+    if password:
+        kwargs["password"] = password
+    else:
+        ifile = api.env.get('identity-file')
+        if ifile and os.path.exists(ifile):
+                kwargs["key_filename"] = ifile
+
     # we need to reset the host_string
     kwargs['host'] = api.env.hosts[0]
     kwargs['port'] = api.env.port
@@ -823,10 +830,18 @@ class buildoutuser(object):
         host_string = api.env.host_string
         api.env.user = api.env.hostout.options['buildout-user']
         key_filename = api.env.key_filename
+        password = getattr(api.env, password)
         
-        ifile = api.env.get('identity-file')
-        if ifile and os.path.exists(ifile):
-            api.env.key_filename = ifile
+        
+        buildoutpass = api.evn.hostout.options.get("buildout-password")
+        if buildoutpass:
+            api.evn.password = buildoutpass
+            passSet = True
+
+        else:
+            ifile = api.env.get('identity-file')
+            if ifile and os.path.exists(ifile):
+                api.env.key_filename = ifile
         
         
         #this will reset the connection
@@ -836,4 +851,9 @@ class buildoutuser(object):
         api.env.host_string = host_string
         api.env['key_filename'] = key_filename
 
+        if passSet:
+            if password != None:
+                api.env.password = password
+            else:
+                del api.env.password
 
