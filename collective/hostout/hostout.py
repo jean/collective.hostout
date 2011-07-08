@@ -838,7 +838,7 @@ class buildoutuser(object):
         
         buildoutpass = api.env.hostout.options.get("buildout-password")
         if buildoutpass:
-            api.evn.password = buildoutpass
+            api.env.password = buildoutpass
             passSet = True
 
         else:
