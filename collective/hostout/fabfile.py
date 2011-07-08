@@ -240,10 +240,9 @@ def bootstrap():
     cmd = getattr(api.env.hostout, 'bootstrap_users_%s'%hostos, api.env.hostout.bootstrap_users)
     cmd()
 
+    python = 'python%(major)s' % d
     if api.env["system-python-use-not"]:
-        python = os.path.join (self.env["python-prefix"], "bin/python")
-    else:
-        python = 'python%(major)s' % d
+        python = os.path.join (api.env["python-prefix"], "bin/", python)
 
     try:
         api.run(python + " --version")
@@ -306,7 +305,7 @@ def bootstrap_users():
     owner = buildout
 
     try:
-        api.run ("egrep ^%(owner)s: /etc/passwd && egrep ^%(effective)s: /etc/passwd  && egrep ^%(buildoutgroup)s: /etc/group") 
+        api.run ("egrep ^%(owner)s: /etc/passwd && egrep ^%(effective)s: /etc/passwd  && egrep ^%(buildoutgroup)s: /etc/group" % locals()) 
 
     except:
         try:
@@ -335,7 +334,7 @@ def bootstrap_users():
                         use_sudo=True )
                 api.sudo("chown -R %(owner)s ~%(owner)s/.ssh" % locals() )
         except:
-            raise Exception ("Was not able to create buildout-user ssh keys, please set buildout-password insted")
+            raise Exception ("Was not able to create buildout-user ssh keys, please set buildout-password insted.")
 
 
 def bootstrap_buildout():
