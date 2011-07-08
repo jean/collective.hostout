@@ -20,6 +20,13 @@ def sudo(*cmd):
     with cd( api.env.path):
         api.sudo(' '.join(cmd))
 
+def run_escalatable(*cmd):
+    try:
+        api.run(' '.join(cmd))
+    except:
+        api.sudo(' '.join(cmd))
+
+
 def put(file, target=None):
     """Recursively upload specified files into the remote buildout folder"""
     if os.path.isdir(file):
