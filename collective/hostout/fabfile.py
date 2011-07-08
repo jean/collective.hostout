@@ -240,7 +240,7 @@ def bootstrap():
     cmd = getattr(api.env.hostout, 'bootstrap_users_%s'%hostos, api.env.hostout.bootstrap_users)
     cmd()
 
-    if self.env["system-python-use-not"]:
+    if api.env["system-python-use-not"]:
         python = os.path.join (self.env["python-prefix"], "bin/python")
     else:
         python = 'python%(major)s' % d
@@ -531,33 +531,77 @@ def bootstrap_python_redhat():
     #Install and Update Dependencies
     user = hostout.options['user']
 
-    hostout.bootstrap_allowsudo()
+    # When a python is needed to be installed
+    def python_build():
+        # Install packages to build
+        required = [
+                "libxml2-devel",
+                "ncurses-devel",
+                "zlib",
+                "zlib-devel",
+                "readline-devel",
+                "bzip2-devel",
+                "openssl",
+                "openssl-dev" ]
+        try:
+            api.sudo ('yum -y install' + ' '.join(required))
+        except:
 
-    # Redhat/centos don't have Python 2.6 or 2.7 in stock yum repos, use EPEL.
-    # Could also use RPMforge repo: http://dag.wieers.com/rpm/FAQ.php#B
-    api.sudo("rpm -Uvh --force http://download.fedora.redhat.com/pub/epel/5/i386/epel-release-5-4.noarch.rpm")
+            # Can't install - test to see if the packages exist
+            notInstalled = []
+            for pkg in required:
+                try:
+                    api.run ('rpm -aq | grep %(pkg)s' % locals())
+                except:
+                    notInstalled.append(pkg)
 
-
-    version = api.env['python-version']
-    python_versioned = 'python' + ''.join(version.split('.')[:2])
-
-    try:
-        api.sudo('yum -y install gcc gcc-c++ ')
-
-        api.sudo('yum -y install ' +
-                 python_versioned + ' ' +
-                 python_versioned + '-devel ' +
-                 'python-setuptools '
-                 'libxml2-python '
-                 'python-elementtree '
-                 'ncurses-devel '
-                 'zlib zlib-devel '
-                 'readline-devel '
-                 'bzip2-devel '
-                 'openssl openssl-dev '
-                 )
-    except:
+            # Packages not found! Raise Exception
+            if len(notInstalled):
+                raise Exception (
+                        "Could not determin if required pacakges were installed: "
+                        + ' '.join(notInstalled))
         hostout.bootstrap_python()
+
+
+
+    # Try to enable sudo access
+    try:
+        hostout.bootstrap_allowsudo()
+    except:
+        pass
+
+    
+    if api.env["system-python-use-not"]:
+        python_build()
+
+    else:
+        # RedHat pacakge management install
+
+        # Redhat/centos don't have Python 2.6 or 2.7 in stock yum repos, use
+        # EPEL.  Could also use RPMforge repo:
+        # http://dag.wieers.com/rpm/FAQ.php#B
+        api.sudo("rpm -Uvh --force http://download.fedora.redhat.com/pub/epel/5/i386/epel-release-5-4.noarch.rpm")
+        version = api.env['python-version']
+        python_versioned = 'python' + ''.join(version.split('.')[:2])
+
+        try:
+            api.sudo('yum -y install gcc gcc-c++ ')
+
+            api.sudo('yum -y install ' +
+                     python_versioned + ' ' +
+                     python_versioned + '-devel ' +
+                     'python-setuptools '
+                     'libxml2-python '
+                     'python-elementtree '
+                     'ncurses-devel '
+                     'zlib zlib-devel '
+                     'readline-devel '
+                     'bzip2-devel '
+                     'openssl openssl-dev '
+                     )
+        except:
+            # Couldn't install from rpm - failover build
+            python_build()
 
 #optional stuff
 #    api.sudo('yum -y install ' +
