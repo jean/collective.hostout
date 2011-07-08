@@ -305,23 +305,38 @@ def bootstrap_users():
     buildoutgroup = api.env['buildout-group']
     owner = buildout
 
-    api.sudo('groupadd %s || echo "group exists"' % buildoutgroup)
-    addopt = " -M -g %s" % buildoutgroup
-    addopt_noM = " -g %s" % buildoutgroup
-    api.sudo('egrep ^%(owner)s: /etc/passwd || useradd %(addopt)s %(owner)s || useradd %(addopt_noM)s %(owner)s' % dict(owner=owner, addopt=addopt, addopt_noM=addopt_noM))
-    api.sudo('egrep ^%(effective)s: /etc/passwd || useradd %(addopt)s %(effective)s || useradd %(addopt_noM)s %(effective)s' % dict(effective=effective, addopt=addopt, addopt_noM=addopt_noM))
-    api.sudo('gpasswd -a %(owner)s %(buildoutgroup)s' % dict(owner=owner, buildoutgroup=buildoutgroup))
-    api.sudo('gpasswd -a %(effective)s %(buildoutgroup)s' % dict(effective=effective, buildoutgroup=buildoutgroup))
+    try:
+        api.run ("egrep ^%(owner)s: /etc/passwd && egrep ^%(effective)s: /etc/passwd  && egrep ^%(buildoutgroup)s: /etc/group") 
 
-    #Copy authorized keys to buildout user:
-    key_filename, key = api.env.hostout.getIdentityKey()
-    for owner in [api.env['buildout-user']]:
-        api.sudo("mkdir -p ~%s/.ssh" % owner)
-        api.sudo('touch ~%s/.ssh/authorized_keys' % owner)
-        fabric.contrib.files.append( text=key,
-                filename='~%s/.ssh/authorized_keys' % owner,
-                use_sudo=True )
-        api.sudo("chown -R %(owner)s ~%(owner)s/.ssh" % locals() )
+    except:
+        try:
+            api.sudo('groupadd %s || echo "group exists"' % buildoutgroup)
+            addopt = " -M -g %s" % buildoutgroup
+            addopt_noM = " -g %s" % buildoutgroup
+            api.sudo('egrep ^%(owner)s: /etc/passwd || useradd %(addopt)s %(owner)s || useradd %(addopt_noM)s %(owner)s' % dict(owner=owner, addopt=addopt, addopt_noM=addopt_noM))
+            api.sudo('egrep ^%(effective)s: /etc/passwd || useradd %(addopt)s %(effective)s || useradd %(addopt_noM)s %(effective)s' % dict(effective=effective, addopt=addopt, addopt_noM=addopt_noM))
+            api.sudo('gpasswd -a %(owner)s %(buildoutgroup)s' % dict(owner=owner, buildoutgroup=buildoutgroup))
+            api.sudo('gpasswd -a %(effective)s %(buildoutgroup)s' % dict(effective=effective, buildoutgroup=buildoutgroup))
+        except:
+            raise Exception (("Was not able to create users and groups." +
+                    "Please set these group manualy." +
+                    " Buildout User: %(buildout)s, Effective User: %(effective)s, Common Buildout Group: %(buildoutgroup)s")
+                    % locals() )
+
+    if not api.env["buildout-password"]:
+        try:
+            #Copy authorized keys to buildout user:
+            key_filename, key = api.env.hostout.getIdentityKey()
+            for owner in [api.env['buildout-user']]:
+                api.sudo("mkdir -p ~%s/.ssh" % owner)
+                api.sudo('touch ~%s/.ssh/authorized_keys' % owner)
+                fabric.contrib.files.append( text=key,
+                        filename='~%s/.ssh/authorized_keys' % owner,
+                        use_sudo=True )
+                api.sudo("chown -R %(owner)s ~%(owner)s/.ssh" % locals() )
+        except:
+            raise Exception ("Was not able to create buildout-user ssh keys, please set buildout-password insted")
+
 
 def bootstrap_buildout():
     """ Create an initialised buildout directory """
