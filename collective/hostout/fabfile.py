@@ -1,3 +1,4 @@
+import sys
 import os
 import os.path
 from fabric import api, contrib
@@ -20,11 +21,15 @@ def sudo(*cmd):
     with cd( api.env.path):
         api.sudo(' '.join(cmd))
 
-def run_escalatable(*cmd):
+def runescalatable(*cmd):
     try:
-        api.run(' '.join(cmd))
+        with asbuildoutuser():
+            api.run(' '.join(cmd))
     except:
-        api.sudo(' '.join(cmd))
+        try:
+            api.run(' '.join(cmd))
+        except:
+            api.sudo(' '.join(cmd))
 
 
 def put(file, target=None):
@@ -80,7 +85,7 @@ def predeploy():
 
     hasBuildoutUser = True
     hasBuildout = True
-    if not os.path.exists(api.env.get('identity-file')):
+    if not (api.env.get("buildout-password") or os.path.exists(api.env.get('identity-file'))):
         hasBuildoutUser = False
     else:
         with asbuildoutuser():
@@ -90,8 +95,7 @@ def predeploy():
                 hasBuildout = False
     
     if not hasBuildoutUser or not hasBuildout:
-        api.env.hostout.bootstrap()
-        api.env.hostout.setowners()
+        raise Exception ("Target deployment does not seem to have been bootstraped.")
 
     api.env.hostout.precommands()
 
@@ -277,21 +281,31 @@ def setowners():
     ec = hostout.getEggCache()
     var = os.path.join(path, 'var')
     
-    # What we want is for
-    # - login user to own the buildout and the cache.
-    # - effective user to be own the var dir + able to read buildout and cache.
+    # What we want is for - login user to own the buildout and the cache.  -
+    # effective user to be own the var dir + able to read buildout and cache.
     
-    api.sudo("find %(path)s  -maxdepth 0 ! -name var -exec chown -R %(buildout)s:%(buildoutgroup)s '{}' \; " \
+    api.env.hostout.runescalatable ("find %(path)s  -maxdepth 0 ! -name var -exec chown -R %(buildout)s:%(buildoutgroup)s '{}' \; " \
              " -exec chmod -R u+rw,g+r-w,o-rw '{}' \;" % locals())
-    api.sudo('mkdir -p %(var)s && chown -R %(effective)s:%(buildoutgroup)s %(var)s && ' \
-             ' chmod -R u+rw,g+wrs,o-rw %(var)s ' % locals())
+
+    api.env.hostout.runescalatable ('mkdir -p %(var)s' % locals()) 
+
+    try:
+        api.env.hostout.runescalatable (\
+                '[ `stat -c %%U:%%G %(var)s` = "%(effective)s:%(buildoutgroup)s" ] || ' \
+                'chown -R %(effective)s:%(buildoutgroup)s %(var)s ' % locals())
+        api.env.hostout.runescalatable ( '[ `stat -c %%A %(var)s` = "drwxrws--x" ] || chmod -R u+rw,g+wrs,o-rw %(var)s ' % locals())
+    except:
+        raise Exception ("Was not able to set owner and permissions on "\
+                    "%(var)s to %(effective)s:%(buildoutgroup)s with u+rw,g+wrs,o-rw" % locals() )
+        
+
 #    api.sudo("chmod g+x `find %(path)s -perm -g-x` || find %(path)s -perm -g-x -exec chmod g+x '{}' \;" % locals()) #so effective can execute code
 #    api.sudo("chmod g+s `find %(path)s -type d` || find %(path)s -type d -exec chmod g+s '{}' \;" % locals()) # so new files will keep same group
 #    api.sudo("chmod g+s `find %(path)s -type d` || find %(path)s -type d -exec chmod g+s '{}' \;" % locals()) # so new files will keep same group
     
     for cache in [bc, dl, ec]:
         #HACK Have to deal with a shared cache. maybe need some kind of group
-        api.sudo('mkdir -p %(cache)s && chown -R %(buildout)s:%(buildoutgroup)s %(cache)s && ' \
+        api.env.hostout.runescalatable('mkdir -p %(cache)s && chown -R %(buildout)s:%(buildoutgroup)s %(cache)s && ' \
                  ' chmod -R ug+rw,a+r %(cache)s ' % locals())
 
     #api.sudo('sudo -u $(effectiveuser) sh -c "export HOME=~$(effectiveuser) && cd $(install_dir) && bin/buildout -c $(hostout_file)"')
@@ -354,7 +368,7 @@ def bootstrap_buildout():
     buildout = api.env['buildout-user']
     buildoutgroup = api.env['buildout-group']
     # create buildout dir
-    api.sudo('mkdir -p -m ug+x %(path)s && chown %(buildout)s:%(buildoutgroup)s %(path)s' % dict(
+    api.env.hostout.runescalatable ('mkdir -p -m ug+x %(path)s && chown %(buildout)s:%(buildoutgroup)s %(path)s' % dict(
         path=path,
         buildout=buildout,
         buildoutgroup=buildoutgroup,
@@ -362,15 +376,24 @@ def bootstrap_buildout():
     # ensure buildout user and group and cd in (ug+x)
     parts = path.split('/')
     for i in range(2, len(parts)):
-        api.sudo('chmod ug+x %s' % '/'.join(parts[:i]) )
+        try:
+            api.env.hostout.runescalatable('chmod ug+x %s' % '/'.join(parts[:i]) )
+        except:
+            print sys.stderr, "Warning: Not able to chmod ug+x on dir " + os.path.join(*parts[:i])
+
 
 
 
     buildoutcache = api.env['buildout-cache']
-    api.sudo('mkdir -p %s/eggs' % buildoutcache)
-    api.sudo('mkdir -p %s/downloads/dist' % buildoutcache)
-    api.sudo('mkdir -p %s/extends' % buildoutcache)
-    api.sudo('chown -R %s:%s %s' % (buildout, buildoutgroup, buildoutcache))
+    api.env.hostout.runescalatable ('mkdir -p %s/eggs' % buildoutcache)
+    api.env.hostout.runescalatable ('mkdir -p %s/downloads/dist' % buildoutcache)
+    api.env.hostout.runescalatable ('mkdir -p %s/extends' % buildoutcache)
+
+    try:
+        api.env.hostout.runescalatable ('chown -R %s:%s %s' % (buildout, buildoutgroup, buildoutcache))
+    except:
+        print sys.stderr, "Warning: Not able to chown on the buildout cache dir"
+
     api.env.hostout.setowners()
 
 #    api.run('mkdir -p %s/eggs' % buildoutcache)
@@ -386,13 +409,14 @@ def bootstrap_buildout():
             # put in simplest buildout to get bootstrap to run
             api.run('echo "[buildout]" > buildout.cfg')
 
-            python = api.env.get('python')
-            if not python or python == 'buildout':
+            # Get python
+            version = api.env['python-version']
+            major = '.'.join(version.split('.')[:2])
+            python = 'python%s' % major
+            if api.env["system-python-use-not"]:
+                python = os.path.join (api.env["python-prefix"], "bin/", python)
 
-                version = api.env['python-version']
-                major = '.'.join(version.split('.')[:2])
-                python = "python%s" % major
-
+            # Bootstrap baby!
             api.run('%s bootstrap.py --distribute' % python)
 
 def bootstrap_buildout_ubuntu():

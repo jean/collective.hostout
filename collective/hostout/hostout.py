@@ -833,10 +833,10 @@ class buildoutuser(object):
         host_string = api.env.host_string
         api.env.user = api.env.hostout.options['buildout-user']
         key_filename = api.env.key_filename
-        password = getattr(api.env, password)
+        password = getattr(api.env, "password")
         
         
-        buildoutpass = api.evn.hostout.options.get("buildout-password")
+        buildoutpass = api.env.hostout.options.get("buildout-password")
         if buildoutpass:
             api.evn.password = buildoutpass
             passSet = True
