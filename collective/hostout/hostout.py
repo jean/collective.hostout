@@ -587,7 +587,7 @@ def main(cfgfile, args):
                       help="hostout configuration file", metavar="FILE")
     
     (options, args) = parser.parse_args()
-    cfgfile = options.cfgfile
+    cfgfile = options.cfgfile.strip()
 
     config = ConfigParser.ConfigParser()
     config.optionxform = str
@@ -660,7 +660,8 @@ def main(cfgfile, args):
                         res = hostout.runcommand(cmd, *cmdargs)
                     else:
                         res = hostout.runcommand(cmd)
-            print("Done.")
+            print("Return value: %s"%res)
+            sys.exit(res is False)
         except SystemExit:
             # a number of internal functions might raise this one.
             raise
