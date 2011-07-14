@@ -439,12 +439,14 @@ path
   Defaults to ~${hostout:effective-user}/buildout
 
 pre-commands
-  A series of shell commands executed as root before the buildout is run. You can use this 
-  to shut down your application. If these commands fail they will be ignored.
+  A series of shell commands executed before the buildout is run. You can use this 
+  to shut down your application. If these commands fail they will be ignored. These
+  will be run as root.
   
 post-commands
-  A series of shell commands executed as root after the buildout is run. You can use this 
-  to startup your application. If these commands fail they will be ignored.
+  A series of shell commands executed after the buildout is run. You can use this 
+  to startup your application. If these commands fail they will be ignored. These
+  will be run as root.
   
 sudo-parts
   Buildout parts which will be installed after the main buildout has been run. These will be run

@@ -124,8 +124,8 @@ class HostOut:
         self.parts = [p.strip() for p in opt.get('parts','').split() if p.strip()]
         self.buildout_cache = opt.get('buildout-cache','')
         opt['download_cache']= "%s/%s" % (self.buildout_cache, 'downloads')
+        install_base = os.path.dirname(self.getRemoteBuildoutPath())
         if not self.buildout_cache:
-            install_base = os.path.dirname(self.getRemoteBuildoutPath())
             self.buildout_cache = os.path.join(install_base,'buildout-cache')
             opt['buildout-cache'] = self.buildout_cache
 
@@ -143,6 +143,9 @@ class HostOut:
         self.options['effective-user'] = self.options.get('effective-user') or self.user or 'root'
         self.options['buildout-user'] = self.options.get('buildout-user') or self.user or 'root'
 
+        self.options["system-python-use-not"] = self.options.get("system-python-use-not") or False
+        self.options["python-prefix"] = self.options.get("python-prefix", os.path.join(install_base, "python"))
+        
         self.firstrun = True
 
     def getPreCommands(self):
@@ -813,9 +816,16 @@ def asbuildoutuser():
     
     kwargs = {"user": api.env.hostout.options['buildout-user']}
     
-    ifile = api.env.get('identity-file')
-    if ifile and os.path.exists(ifile):
-            kwargs["key_filename"] = ifile
+    
+    # Select Authentication method
+    password = api.env.hostout.options.get("buildout-password")
+    if password:
+        kwargs["password"] = password
+    else:
+        ifile = api.env.get('identity-file')
+        if ifile and os.path.exists(ifile):
+                kwargs["key_filename"] = ifile
+
     # we need to reset the host_string
     kwargs['host'] = api.env.hosts[0]
     kwargs['port'] = api.env.port
@@ -833,10 +843,19 @@ class buildoutuser(object):
         host_string = api.env.host_string
         api.env.user = api.env.hostout.options['buildout-user']
         key_filename = api.env.key_filename
+        password = getattr(api.env, "password")
         
-        ifile = api.env.get('identity-file')
-        if ifile and os.path.exists(ifile):
-            api.env.key_filename = ifile
+        
+        buildoutpass = api.env.hostout.options.get("buildout-password")
+        passSet = False
+        if buildoutpass:
+            api.env.password = buildoutpass
+            passSet = True
+
+        else:
+            ifile = api.env.get('identity-file')
+            if ifile and os.path.exists(ifile):
+                api.env.key_filename = ifile
         
         
         #this will reset the connection
@@ -846,4 +865,9 @@ class buildoutuser(object):
         api.env.host_string = host_string
         api.env['key_filename'] = key_filename
 
+        if passSet:
+            if password != None:
+                api.env.password = password
+            else:
+                del api.env.password
 
