@@ -343,7 +343,7 @@ def bootstrap_users():
                     " Buildout User: %(buildout)s, Effective User: %(effective)s, Common Buildout Group: %(buildoutgroup)s")
                     % locals() )
 
-    if not api.env["buildout-password"]:
+    if not api.env.get("buildout-password", False):
         try:
             #Copy authorized keys to buildout user:
             key_filename, key = api.env.hostout.getIdentityKey()
@@ -736,20 +736,18 @@ RETVAL=0
 
 start() {
     echo -n "Starting $NAME: "
-    pushd $BUILDOUT
+    cd $BUILDOUT
     %(startcmd)s
     RETVAL=$?
-    popd
     echo
     return $RETVAL
 }
 
 stop() {
     echo -n "Stopping $NAME: "
-    pushd $BUILDOUT
+    cd $BUILDOUT
     %(stopcmd)s
     RETVAL=$?
-    popd
     echo
     return $RETVAL
 }
