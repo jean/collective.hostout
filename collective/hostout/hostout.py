@@ -36,6 +36,9 @@ from urllib import pathname2url
 import StringIO
 import functools
 from optparse import OptionParser
+from socksproxy.blocking_socks import SocksServer
+import threading
+import select
 
 
 
@@ -145,6 +148,7 @@ class HostOut:
 
         self.options["system-python-use-not"] = self.options.get("system-python-use-not") or False
         self.options["python-prefix"] = self.options.get("python-prefix", os.path.join(install_base, "python"))
+        self.options['tunnel'] = self.options.get("tunnel") or False
         
         self.firstrun = True
 
@@ -242,7 +246,6 @@ class HostOut:
 
         #config_file = self.buildout_cfg
         files = set()
-        #import pdb; pdb.set_trace()
         for file in self.buildout_cfg:
             files = files.union( set(get_all_extends(file)))
         files = files.union( set(self.getBuildoutDependencies()))
@@ -276,6 +279,29 @@ class HostOut:
         else:
             key = RSAKey.from_private_key_file(keyfile)
         return keyfile, "ssh-rsa %s hostout@hostout" % key.get_base64()
+
+    @property
+    def socks_proxy(self):
+        " Create a tunnel back to the dev server and start a socks proxy, returning the local connection string "
+        if not self.options.get("tunnel",False):
+            return ''
+        
+        from fabric.state import connections
+        transport = connections[api.env.host_string].get_transport()
+        if getattr(self,'socks_server',None) is None:
+            self.socks_server = SSHReverseSocksProxy(('127.0.0.1',7000), transport)
+            handler = lambda: self.socks_server.start()
+            thr = threading.Thread(target=handler)
+            thr.setDaemon(True)
+            thr.start()
+
+        #if getattr(self,'tunnel',None) is None:
+        #    self.tunnel = threading.Thread(target=reverse_forward_tunnel, args=(7000, 'localhost', 7000, transport))
+        #    self.tunnel.setDaemon(True)
+        #    self.tunnel.start()
+
+        return '127.0.0.1:7000'
+
 
     def readsshconfig(self):
         config = os.path.expanduser('~/.ssh/config')
@@ -870,4 +896,88 @@ class buildoutuser(object):
                 api.env.password = password
             else:
                 del api.env.password
+
+
+
+class SSHReverseSocksProxy(SocksServer):
+    def __init__(self, listen_addr, transport):
+        self.transport = transport
+        SocksServer.__init__(self, listen_addr)
+
+    def server_bind(self):
+        """Called by constructor to bind the socket.
+
+        May be overridden.
+
+        """
+        if self.allow_reuse_address:
+            self.socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+
+    
+        self.transport.request_port_forward(self.server_address[0], self.server_address[1])
+        #self.socket.bind(self.server_address)
+        self.server_address = self.socket.getsockname()
+        self.socket = self.transport.accept(1000)
+
+
+
+    def server_activate(self):
+        """Called by constructor to activate the server.
+
+        May be overridden.
+
+        """
+        #self.socket.listen(self.request_queue_size)
+        pass
+
+
+def handler(chan, host, port):
+    sock = socket.socket()
+    try:
+        sock.connect((host, port))
+    except Exception, e:
+        verbose('Forwarding request to %s:%d failed: %r' % (host, port, e))
+        return
+
+    verbose('Connected!  Tunnel open %r -> %r -> %r' % (chan.origin_addr,
+
+                                                        chan.getpeername(), (host, port)))
+    fdone = rdone = False
+    import pdb; pdb.set_trace()
+    while not (fdone  and rdone):
+        r, w, x = select.select([sock, chan], [], [])
+        if sock in r:
+            data = sock.recv(1024)
+            if len(data) == 0:
+                fdone = True
+            else:
+                chan.send(data)
+        if chan in r:
+            data = chan.recv(1024)
+            if len(data) == 0:
+                rdone = True
+            else:
+                sock.send(data)
+    chan.close()
+    sock.close()
+    verbose('Tunnel closed from %r' % (chan.origin_addr,))
+
+
+def reverse_forward_tunnel(server_port, remote_host, remote_port, transport):
+    transport.request_port_forward('', server_port)
+    while True:
+        chan = transport.accept(1000)
+        if chan is None:
+            continue
+        thr = threading.Thread(target=handler, args=(chan, remote_host, remote_port))
+        thr.setDaemon(True)
+        thr.start()
+
+
+def verbose(s):
+        print s
+
+
+
+
 
