@@ -737,20 +737,18 @@ RETVAL=0
 
 start() {
     echo -n "Starting $NAME: "
-    pushd $BUILDOUT
+    cd $BUILDOUT
     %(startcmd)s
     RETVAL=$?
-    popd
     echo
     return $RETVAL
 }
 
 stop() {
     echo -n "Stopping $NAME: "
-    pushd $BUILDOUT
+    cd $BUILDOUT
     %(stopcmd)s
     RETVAL=$?
-    popd
     echo
     return $RETVAL
 }
