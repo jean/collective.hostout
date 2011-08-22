@@ -287,16 +287,17 @@ def setowners():
     api.env.hostout.runescalatable ("find %(path)s  -maxdepth 0 ! -name var -exec chown -R %(buildout)s:%(buildoutgroup)s '{}' \; " \
              " -exec chmod -R u+rw,g+r-w,o-rw '{}' \;" % locals())
 
-    api.env.hostout.runescalatable ('mkdir -p %(var)s' % locals()) 
+    api.env.hostout.runescalatable ('mkdir -p %(var)s' % locals())
+#    api.run('mkdir -p %(var)s' % dict(var=var))
 
-    try:
-        api.env.hostout.runescalatable (\
-                '[ `stat -c %%U:%%G %(var)s` = "%(effective)s:%(buildoutgroup)s" ] || ' \
-                'chown -R %(effective)s:%(buildoutgroup)s %(var)s ' % locals())
-        api.env.hostout.runescalatable ( '[ `stat -c %%A %(var)s` = "drwxrws--x" ] || chmod -R u+rw,g+wrs,o-rw %(var)s ' % locals())
-    except:
-        raise Exception ("Was not able to set owner and permissions on "\
-                    "%(var)s to %(effective)s:%(buildoutgroup)s with u+rw,g+wrs,o-rw" % locals() )
+#    try:
+#        api.env.hostout.runescalatable (\
+#                '[ `stat -c %%U:%%G %(var)s` = "%(effective)s:%(buildoutgroup)s" ] || ' \
+#                'chown -R %(effective)s:%(buildoutgroup)s %(var)s ' % locals())
+#        api.env.hostout.runescalatable ( '[ `stat -c %%A %(var)s` = "drwxrws--x" ] || chmod -R u+rw,g+wrs,o-rw %(var)s ' % locals())
+#    except:
+#        raise Exception ("Was not able to set owner and permissions on "\
+#                    "%(var)s to %(effective)s:%(buildoutgroup)s with u+rw,g+wrs,o-rw" % locals() )
         
 
 #    api.sudo("chmod g+x `find %(path)s -perm -g-x` || find %(path)s -perm -g-x -exec chmod g+x '{}' \;" % locals()) #so effective can execute code
@@ -343,7 +344,7 @@ def bootstrap_users():
                     " Buildout User: %(buildout)s, Effective User: %(effective)s, Common Buildout Group: %(buildoutgroup)s")
                     % locals() )
 
-    if not api.env["buildout-password"]:
+    if not api.env.get("buildout-password",None):
         try:
             #Copy authorized keys to buildout user:
             key_filename, key = api.env.hostout.getIdentityKey()
