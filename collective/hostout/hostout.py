@@ -37,6 +37,8 @@ import StringIO
 import functools
 from optparse import OptionParser
 from socksproxy.blocking_socks import SocksServer
+from socksproxy.blocking_socks import SocksHandler as SocksHandlerBase
+import SocketServer
 import threading
 import select
 
@@ -289,16 +291,14 @@ class HostOut:
         from fabric.state import connections
         transport = connections[api.env.host_string].get_transport()
         if getattr(self,'socks_server',None) is None:
-            self.socks_server = SSHReverseSocksProxy(('127.0.0.1',7000), transport)
-            handler = lambda: self.socks_server.start()
-            thr = threading.Thread(target=handler)
+            import pdb; pdb.set_trace()
+            proxy = SocksProxy(transport, ('127.0.0.1', 7000))
+            #proxy.handle_request()
+            thr = threading.Thread(target=proxy.start)
             thr.setDaemon(True)
             thr.start()
 
-        #if getattr(self,'tunnel',None) is None:
-        #    self.tunnel = threading.Thread(target=reverse_forward_tunnel, args=(7000, 'localhost', 7000, transport))
-        #    self.tunnel.setDaemon(True)
-        #    self.tunnel.start()
+#            transport.request_port_forward('127.0.0.1', 7000, handler)
 
         return '127.0.0.1:7000'
 
@@ -898,11 +898,21 @@ class buildoutuser(object):
                 del api.env.password
 
 
+class SocksHandler(SocksHandlerBase):
+    def setup(self):
+        SocksHandlerBase.setup(self)
+        # stupid paramiko doesn't impliment closed
+        self.rfile.closed = property(lambda self: self._closed)
+        self.wfile.closed = property(lambda self: self._closed)
 
-class SSHReverseSocksProxy(SocksServer):
-    def __init__(self, listen_addr, transport):
+
+
+class SocksProxy(SocksServer):
+    def __init__(self, transport, listen_addr):
         self.transport = transport
-        SocksServer.__init__(self, listen_addr)
+        # skip SocksServer so we can add our own proxy
+        SocketServer.ThreadingTCPServer.__init__(self, listen_addr, SocksHandler)
+        self.socket = transport
 
     def server_bind(self):
         """Called by constructor to bind the socket.
@@ -910,14 +920,16 @@ class SSHReverseSocksProxy(SocksServer):
         May be overridden.
 
         """
-        if self.allow_reuse_address:
-            self.socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        server,port = self.server_address
+        self.transport.request_port_forward(server, port)
 
-    
-        self.transport.request_port_forward(self.server_address[0], self.server_address[1])
+#        if self.allow_reuse_address:
+#            self.socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+
+
         #self.socket.bind(self.server_address)
-        self.server_address = self.socket.getsockname()
-        self.socket = self.transport.accept(1000)
+#        self.server_address = self.socket.getsockname()
+#        self.socket = self.transport.accept(1000)
 
 
 
@@ -929,6 +941,16 @@ class SSHReverseSocksProxy(SocksServer):
         """
         #self.socket.listen(self.request_queue_size)
         pass
+
+    def get_request(self):
+        return self.socket, self.socket.getpeername()
+
+    def start(self):
+        while True:
+            self.socket = self.transport.accept()
+            self.handle_request()
+
+
 
 
 def handler(chan, host, port):
