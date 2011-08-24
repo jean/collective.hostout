@@ -8,12 +8,14 @@ from collective.hostout.hostout import buildoutuser, asbuildoutuser
 from fabric.context_managers import cd
 from pkg_resources import resource_filename
 import tempfile
-    
+
+
 
 @buildoutuser
 def run(*cmd):
     """Execute cmd on remote as login user """
     proxy = api.env.hostout.socks_proxy
+
 
     with cd( api.env.path):
         api.run(' '.join(cmd))
@@ -818,7 +820,7 @@ def bootscript_list():
 
 
 def proxy_cmd():
-    if api.env.hostout.socks_proxy:
+    if api.env.hostout.http_proxy:
         return 'export HTTP_PROXY="http://%s" && '% api.env.hostout.socks_proxy
     else:
         return ''

@@ -41,6 +41,12 @@ from socksproxy.blocking_socks import SocksHandler as SocksHandlerBase
 import SocketServer
 import threading
 import select
+import logging
+from contextlib import closing
+from ProxyHTTPServer import ProxyHTTPRequestHandler
+import BaseHTTPServer
+
+#logging.basicConfig(level=logging.DEBUG)
 
 
 
@@ -284,24 +290,29 @@ class HostOut:
 
     @property
     def socks_proxy(self):
-        " Create a tunnel back to the dev server and start a socks proxy, returning the local connection string "
+        " Create a tunnel back to the dev server and start a socks proxy, returning the remote connection string "
         if not self.options.get("tunnel",False):
             return ''
         
         from fabric.state import connections
         transport = connections[api.env.host_string].get_transport()
         if getattr(self,'socks_server',None) is None:
-            import pdb; pdb.set_trace()
-            proxy = SocksProxy(transport, ('127.0.0.1', 7000))
-            #proxy.handle_request()
-            thr = threading.Thread(target=proxy.start)
-            thr.setDaemon(True)
-            thr.start()
-
-#            transport.request_port_forward('127.0.0.1', 7000, handler)
+            self.socks_server = SocksProxy(transport, ('127.0.0.1', 7000))
 
         return '127.0.0.1:7000'
 
+    @property
+    def http_proxy(self):
+        " Create a tunnel back to the dev server and start a socks proxy, returning the remote connection string "
+        if not self.options.get("tunnel",False):
+            return ''
+
+        from fabric.state import connections
+        transport = connections[api.env.host_string].get_transport()
+        if getattr(self,'http_server',None) is None:
+            self.http_server = HTTPProxy(transport, ('127.0.0.1', 7001))
+
+        return '127.0.0.1:7001'
 
     def readsshconfig(self):
         config = os.path.expanduser('~/.ssh/config')
@@ -898,48 +909,33 @@ class buildoutuser(object):
                 del api.env.password
 
 
-class SocksHandler(SocksHandlerBase):
+
+
+class HandlerWithClosed(object):
     def setup(self):
-        SocksHandlerBase.setup(self)
-        # stupid paramiko doesn't impliment closed
+        super(HandlerWithClosed,self).setup()
+        # stupid paramiko doesn't implement closed
         self.rfile.closed = property(lambda self: self._closed)
         self.wfile.closed = property(lambda self: self._closed)
 
+class SocksHandler(HandlerWithClosed, SocksHandlerBase):
+    pass
 
+class HTTPProxyHandler(HandlerWithClosed, ProxyHTTPRequestHandler):
+    pass
 
-class SocksProxy(SocksServer):
-    def __init__(self, transport, listen_addr):
+class TunneledServer(object):
+    def __init__(self, transport, listen_addr, handler):
         self.transport = transport
         # skip SocksServer so we can add our own proxy
-        SocketServer.ThreadingTCPServer.__init__(self, listen_addr, SocksHandler)
+        SocketServer.ThreadingTCPServer.__init__(self, listen_addr, handler)
         self.socket = transport
 
     def server_bind(self):
-        """Called by constructor to bind the socket.
-
-        May be overridden.
-
-        """
         server,port = self.server_address
-        self.transport.request_port_forward(server, port)
-
-#        if self.allow_reuse_address:
-#            self.socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-
-
-        #self.socket.bind(self.server_address)
-#        self.server_address = self.socket.getsockname()
-#        self.socket = self.transport.accept(1000)
-
-
+        self.transport.request_port_forward(server, port, self.handler)
 
     def server_activate(self):
-        """Called by constructor to activate the server.
-
-        May be overridden.
-
-        """
-        #self.socket.listen(self.request_queue_size)
         pass
 
     def get_request(self):
@@ -950,55 +946,19 @@ class SocksProxy(SocksServer):
             self.socket = self.transport.accept()
             self.handle_request()
 
+    def handler(self, channel, origin, server):
+        import pdb; pdb.set_trace()
+        self.socket = channel
+        self._handle_request_noblock()
 
 
+class SocksProxy(TunneledServer, SocksServer):
+    def __init__(self, transport, listen_addr):
+        TunneledServer.__init__(self, transport, listen_addr, SocksHandler)
 
-def handler(chan, host, port):
-    sock = socket.socket()
-    try:
-        sock.connect((host, port))
-    except Exception, e:
-        verbose('Forwarding request to %s:%d failed: %r' % (host, port, e))
-        return
-
-    verbose('Connected!  Tunnel open %r -> %r -> %r' % (chan.origin_addr,
-
-                                                        chan.getpeername(), (host, port)))
-    fdone = rdone = False
-    import pdb; pdb.set_trace()
-    while not (fdone  and rdone):
-        r, w, x = select.select([sock, chan], [], [])
-        if sock in r:
-            data = sock.recv(1024)
-            if len(data) == 0:
-                fdone = True
-            else:
-                chan.send(data)
-        if chan in r:
-            data = chan.recv(1024)
-            if len(data) == 0:
-                rdone = True
-            else:
-                sock.send(data)
-    chan.close()
-    sock.close()
-    verbose('Tunnel closed from %r' % (chan.origin_addr,))
-
-
-def reverse_forward_tunnel(server_port, remote_host, remote_port, transport):
-    transport.request_port_forward('', server_port)
-    while True:
-        chan = transport.accept(1000)
-        if chan is None:
-            continue
-        thr = threading.Thread(target=handler, args=(chan, remote_host, remote_port))
-        thr.setDaemon(True)
-        thr.start()
-
-
-def verbose(s):
-        print s
-
+class HTTPProxy(TunneledServer, SocketServer.ThreadingTCPServer, BaseHTTPServer.HTTPServer):
+    def __init__(self, transport, listen_addr):
+        TunneledServer.__init__(self, transport, listen_addr, HTTPProxyHandler)
 
 
 
