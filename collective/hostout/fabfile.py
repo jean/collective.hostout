@@ -15,6 +15,7 @@ import tempfile
 def run(*cmd):
     """Execute cmd on remote as login user """
     proxy = api.env.hostout.socks_proxy
+    proxy = api.env.hostout.http_proxy
 
 
     with cd( api.env.path):
@@ -212,7 +213,7 @@ def buildout(*args):
             pinned = "[buildout]"
             contrib.files.append(pinned, 'pinned.cfg')
         #run generated buildout
-        api.run('%s bin/buildout -c %s %s' % (proxy_cmd, filename, ' '.join(args)))
+        api.run('%s bin/buildout -c %s %s' % (proxy_cmd(), filename, ' '.join(args)))
 
 def sudobuildout(*args):
     hostout = api.env.get('hostout')
@@ -493,11 +494,11 @@ extra_options +=
 
         api.sudo('svn co http://svn.plone.org/svn/collective/buildout/python/')
         with cd('python'):
-            api.sudo('curl -O http://python-distribute.org/distribute_setup.py')
-            api.sudo('python distribute_setup.py')
-            api.sudo('python bootstrap.py --distribute')
+            get_url('http://python-distribute.org/distribute_setup.py')
+            api.sudo('%s python distribute_setup.py'% proxy_cmd())
+            api.sudo('%s python bootstrap.py --distribute' % proxy_cmd())
             fabric.contrib.files.append('buildout.cfg', BUILDOUT%locals(), use_sudo=True)
-            api.sudo('bin/buildout')
+            api.sudo('%s bin/buildout'%proxy_cmd())
     api.env['python'] = "source /var/buildout-python/python/python-%(major)s/bin/activate; python "
         
     #ensure bootstrap files have correct owners
@@ -515,12 +516,7 @@ def bootstrap_python():
     #api.run("([-O %s])"%prefix)
     
     with cd('/tmp'):
-        curl = 'http://python.org/ftp/python/%(version)s/Python-%(version)s.tgz > Python-%(version)s.tgz'%d
-        proxy = api.env.hostout.socks_proxy
-        if proxy:
-            api.run('curl --socks5 %s %s' % (proxy, curl) )
-        else:
-            api.run('curl %s' % curl)
+        get_url('http://python.org/ftp/python/%(version)s/Python-%(version)s.tgz'%d)
         api.run('tar -xzf Python-%(version)s.tgz'%d)
         with cd('Python-%(version)s'%d):
 #            api.run("sed 's/#readline/readline/' Modules/Setup.dist > TMPFILE && mv TMPFILE Modules/Setup.dist")
@@ -821,7 +817,13 @@ def bootscript_list():
 
 def proxy_cmd():
     if api.env.hostout.http_proxy:
-        return 'export HTTP_PROXY="http://%s" && '% api.env.hostout.socks_proxy
+        return 'export HTTP_PROXY="http://%s" && '% api.env.hostout.http_proxy
     else:
         return ''
 
+def get_url(curl):
+    proxy = api.env.hostout.socks_proxy
+    if proxy:
+        api.run('curl --socks5 %s -O %s' % (proxy, curl) )
+    else:
+        api.run('curl -O %s' % curl)

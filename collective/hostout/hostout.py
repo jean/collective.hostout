@@ -911,18 +911,20 @@ class buildoutuser(object):
 
 
 
-class HandlerWithClosed(object):
+
+class SocksHandler(SocksHandlerBase):
     def setup(self):
-        super(HandlerWithClosed,self).setup()
+        SocksHandlerBase.setup(self)
         # stupid paramiko doesn't implement closed
         self.rfile.closed = property(lambda self: self._closed)
         self.wfile.closed = property(lambda self: self._closed)
 
-class SocksHandler(HandlerWithClosed, SocksHandlerBase):
-    pass
-
-class HTTPProxyHandler(HandlerWithClosed, ProxyHTTPRequestHandler):
-    pass
+class HTTPProxyHandler(ProxyHTTPRequestHandler):
+    def setup(self):
+        ProxyHTTPRequestHandler.setup(self)
+        # stupid paramiko doesn't implement closed
+        self.rfile.closed = property(lambda self: self._closed)
+        self.wfile.closed = property(lambda self: self._closed)
 
 class TunneledServer(object):
     def __init__(self, transport, listen_addr, handler):
@@ -947,7 +949,6 @@ class TunneledServer(object):
             self.handle_request()
 
     def handler(self, channel, origin, server):
-        import pdb; pdb.set_trace()
         self.socket = channel
         self._handle_request_noblock()
 
