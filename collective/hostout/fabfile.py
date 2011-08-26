@@ -504,7 +504,7 @@ extra_options +=
     #ensure bootstrap files have correct owners
     hostout.setowners()
 
-def bootstrap_python():
+def bootstrap_python(extra_args=""):
     version = api.env['python-version']
 
     versionParsed = '.'.join(version.split('.')[:3])
@@ -522,7 +522,7 @@ def bootstrap_python():
 #            api.run("sed 's/#readline/readline/' Modules/Setup.dist > TMPFILE && mv TMPFILE Modules/Setup.dist")
 #            api.run("sed 's/#_socket/_socket/' Modules/Setup.dist > TMPFILE && mv TMPFILE Modules/Setup.dist")
             
-            api.run('./configure --prefix=%(prefix)s  --enable-unicode=ucs4 --with-threads --with-readline --with-dbm --with-zlib --with-ssl --with-bz2' % locals())
+            api.run('./configure --prefix=%(prefix)s  --enable-unicode=ucs4 --with-threads --with-readline --with-dbm --with-zlib --with-ssl --with-bz2 %(extra_args)s' % locals())
             api.run('make')
             runescalatable('make altinstall')
         api.run("rm -rf /tmp/Python-%(version)s"%d)
@@ -677,6 +677,18 @@ def bootstrap_python_redhat():
 #            'libxml2 libxml2-devel '
 #            'libxslt libxslt-devel ')
 
+
+def bootstrap_python_slackware():
+    urls = [
+        'http://carroll.cac.psu.edu/pub/linux/distributions/slackware/slackware-11.0/slackware/l/zlib-1.2.3-i486-1.tgz'
+        ]
+    for url in urls:
+        with cd('/tmp'):
+            get_url(url)
+            pkg = url.rsplit('/',1)[-1]
+            api.sudo('installpkg %s'%pkg)
+            api.run("rm %s"%pkg)
+    api.env.hostout.bootstrap_python(extra_args="--with-zlib=/usr/include/zlib.h")
 
 
 def detecthostos():
