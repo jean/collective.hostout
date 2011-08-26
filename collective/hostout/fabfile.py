@@ -8,11 +8,16 @@ from collective.hostout.hostout import buildoutuser, asbuildoutuser
 from fabric.context_managers import cd
 from pkg_resources import resource_filename
 import tempfile
-    
+
+
 
 @buildoutuser
 def run(*cmd):
     """Execute cmd on remote as login user """
+    proxy = api.env.hostout.socks_proxy
+    proxy = api.env.hostout.http_proxy
+
+
     with cd( api.env.path):
         api.run(' '.join(cmd))
 
@@ -208,7 +213,7 @@ def buildout(*args):
             pinned = "[buildout]"
             contrib.files.append(pinned, 'pinned.cfg')
         #run generated buildout
-        api.run('bin/buildout -c %s %s' % (filename, ' '.join(args)))
+        api.run('%s bin/buildout -c %s %s' % (proxy_cmd(), filename, ' '.join(args)))
 
 def sudobuildout(*args):
     hostout = api.env.get('hostout')
@@ -256,10 +261,14 @@ def bootstrap():
         python = os.path.join (api.env["python-prefix"], "bin/", python)
 
     try:
-        api.run(python + " --version")
+        api.run(python + " -V")
     except:
-        cmd = getattr(api.env.hostout, 'bootstrap_python_%s'%hostos, api.env.hostout.bootstrap_python)
-        cmd()
+        try:
+            with cd(api.env["python-prefix"]+'/bin'):
+                api.run(python + " -V")
+        except:
+            cmd = getattr(api.env.hostout, 'bootstrap_python_%s'%hostos, api.env.hostout.bootstrap_python)
+            cmd()
 
     cmd = getattr(api.env.hostout, 'bootstrap_buildout_%s'%hostos, api.env.hostout.bootstrap_buildout)
     cmd()
@@ -414,11 +423,15 @@ def bootstrap_buildout():
             version = api.env['python-version']
             major = '.'.join(version.split('.')[:2])
             python = 'python%s' % major
-            if api.env["system-python-use-not"]:
-                python = os.path.join (api.env["python-prefix"], "bin/", python)
 
             # Bootstrap baby!
-            api.run('%s bootstrap.py --distribute' % python)
+            try:
+                api.run('%s %s bootstrap.py --distribute' % (proxy_cmd(), python) )
+            except:
+                python = os.path.join (api.env["python-prefix"], "bin/", python)
+                api.run('%s %s bootstrap.py --distribute' % (proxy_cmd(), python) )
+
+
 
 def bootstrap_buildout_ubuntu():
     
@@ -482,17 +495,17 @@ extra_options +=
 
         api.sudo('svn co http://svn.plone.org/svn/collective/buildout/python/')
         with cd('python'):
-            api.sudo('curl -O http://python-distribute.org/distribute_setup.py')
-            api.sudo('python distribute_setup.py')
-            api.sudo('python bootstrap.py --distribute')
+            get_url('http://python-distribute.org/distribute_setup.py')
+            api.sudo('%s python distribute_setup.py'% proxy_cmd())
+            api.sudo('%s python bootstrap.py --distribute' % proxy_cmd())
             fabric.contrib.files.append('buildout.cfg', BUILDOUT%locals(), use_sudo=True)
-            api.sudo('bin/buildout')
+            api.sudo('%s bin/buildout'%proxy_cmd())
     api.env['python'] = "source /var/buildout-python/python/python-%(major)s/bin/activate; python "
         
     #ensure bootstrap files have correct owners
     hostout.setowners()
 
-def bootstrap_python():
+def bootstrap_python(extra_args=""):
     version = api.env['python-version']
 
     versionParsed = '.'.join(version.split('.')[:3])
@@ -500,19 +513,21 @@ def bootstrap_python():
     d = dict(version=versionParsed)
     
     prefix = api.env["python-prefix"]
-    api.run('mkdir -p %s' % prefix)
+    runescalatable('mkdir -p %s' % prefix)
+    #api.run("([-O %s])"%prefix)
     
     with cd('/tmp'):
-        api.run('curl http://python.org/ftp/python/%(version)s/Python-%(version)s.tgz > Python-%(version)s.tgz'%d)
+        get_url('http://python.org/ftp/python/%(version)s/Python-%(version)s.tgz'%d)
         api.run('tar -xzf Python-%(version)s.tgz'%d)
         with cd('Python-%(version)s'%d):
 #            api.run("sed 's/#readline/readline/' Modules/Setup.dist > TMPFILE && mv TMPFILE Modules/Setup.dist")
 #            api.run("sed 's/#_socket/_socket/' Modules/Setup.dist > TMPFILE && mv TMPFILE Modules/Setup.dist")
             
-            api.run('./configure --prefix=%(prefix)s  --enable-unicode=ucs4 --with-threads --with-readline --with-dbm --with-zlib --with-ssl --with-bz2' % locals())
+            api.run('./configure --prefix=%(prefix)s  --enable-unicode=ucs4 --with-threads --with-readline --with-dbm --with-zlib --with-ssl --with-bz2 %(extra_args)s' % locals())
             api.run('make')
-            api.run('make altinstall')
+            runescalatable('make altinstall')
         api.run("rm -rf /tmp/Python-%(version)s"%d)
+    api.env["system-python-use-not"] = True
 
 
 
@@ -664,12 +679,24 @@ def bootstrap_python_redhat():
 #            'libxslt libxslt-devel ')
 
 
+def bootstrap_python_slackware():
+    urls = [
+        'http://carroll.cac.psu.edu/pub/linux/distributions/slackware/slackware-11.0/slackware/l/zlib-1.2.3-i486-1.tgz'
+        ]
+    for url in urls:
+        with cd('/tmp'):
+            get_url(url)
+            pkg = url.rsplit('/',1)[-1]
+            api.sudo('installpkg %s'%pkg)
+            api.run("rm %s"%pkg)
+    api.env.hostout.bootstrap_python(extra_args="--with-zlib=/usr/include/zlib.h")
+
 
 def detecthostos():
     #http://wiki.linuxquestions.org/wiki/Find_out_which_linux_distribution_a_system_belongs_to
     # extra ; because of how fabric uses bash now
     hostos = api.run(
-        ";([ -e /etc/SuSE-release ] && echo SuSE) || "
+        "([ -e /etc/SuSE-release ] && echo SuSE) || "
                 "([ -e /etc/redhat-release ] && echo redhat) || "
                 "([ -e /etc/fedora-release ] && echo fedora) || "
                 "(lsb_release -is) || "
@@ -801,5 +828,15 @@ def bootscript_list():
     api.run ("ls -l /etc/init.d/buildout-*")
 
 
+def proxy_cmd():
+    if api.env.hostout.http_proxy:
+        return 'export HTTP_PROXY="http://%s" && '% api.env.hostout.http_proxy
+    else:
+        return ''
 
-
+def get_url(curl):
+    proxy = api.env.hostout.socks_proxy
+    if proxy:
+        api.run('curl --socks5 %s -O %s' % (proxy, curl) )
+    else:
+        api.run('curl -O %s' % curl)

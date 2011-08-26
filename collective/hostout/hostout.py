@@ -36,6 +36,17 @@ from urllib import pathname2url
 import StringIO
 import functools
 from optparse import OptionParser
+from socksproxy.blocking_socks import SocksServer
+from socksproxy.blocking_socks import SocksHandler as SocksHandlerBase
+import SocketServer
+import threading
+import select
+import logging
+from contextlib import closing
+from ProxyHTTPServer import ProxyHTTPRequestHandler
+import BaseHTTPServer
+
+#logging.basicConfig(level=logging.DEBUG)
 
 
 
@@ -145,6 +156,7 @@ class HostOut:
 
         self.options["system-python-use-not"] = self.options.get("system-python-use-not") or False
         self.options["python-prefix"] = self.options.get("python-prefix", os.path.join(install_base, "python"))
+        self.options['tunnel'] = self.options.get("tunnel") or False
         
         self.firstrun = True
 
@@ -242,7 +254,6 @@ class HostOut:
 
         #config_file = self.buildout_cfg
         files = set()
-        #import pdb; pdb.set_trace()
         for file in self.buildout_cfg:
             files = files.union( set(get_all_extends(file)))
         files = files.union( set(self.getBuildoutDependencies()))
@@ -276,6 +287,32 @@ class HostOut:
         else:
             key = RSAKey.from_private_key_file(keyfile)
         return keyfile, "ssh-rsa %s hostout@hostout" % key.get_base64()
+
+    @property
+    def socks_proxy(self):
+        " Create a tunnel back to the dev server and start a socks proxy, returning the remote connection string "
+        if not self.options.get("tunnel",False):
+            return ''
+        
+        from fabric.state import connections
+        transport = connections[api.env.host_string].get_transport()
+        if getattr(self,'socks_server',None) is None:
+            self.socks_server = SocksProxy(transport, ('127.0.0.1', 7000))
+
+        return '127.0.0.1:7000'
+
+    @property
+    def http_proxy(self):
+        " Create a tunnel back to the dev server and start a socks proxy, returning the remote connection string "
+        if not self.options.get("tunnel",False):
+            return ''
+
+        from fabric.state import connections
+        transport = connections[api.env.host_string].get_transport()
+        if getattr(self,'http_server',None) is None:
+            self.http_server = HTTPProxy(transport, ('127.0.0.1', 7001))
+
+        return '127.0.0.1:7001'
 
     def readsshconfig(self):
         config = os.path.expanduser('~/.ssh/config')
@@ -870,4 +907,60 @@ class buildoutuser(object):
                 api.env.password = password
             else:
                 del api.env.password
+
+
+
+
+
+class SocksHandler(SocksHandlerBase):
+    def setup(self):
+        SocksHandlerBase.setup(self)
+        # stupid paramiko doesn't implement closed
+        self.rfile.closed = property(lambda self: self._closed)
+        self.wfile.closed = property(lambda self: self._closed)
+
+class HTTPProxyHandler(ProxyHTTPRequestHandler):
+    def setup(self):
+        ProxyHTTPRequestHandler.setup(self)
+        # stupid paramiko doesn't implement closed
+        self.rfile.closed = property(lambda self: self._closed)
+        self.wfile.closed = property(lambda self: self._closed)
+
+class TunneledServer(object):
+    def __init__(self, transport, listen_addr, handler):
+        self.transport = transport
+        # skip SocksServer so we can add our own proxy
+        SocketServer.ThreadingTCPServer.__init__(self, listen_addr, handler)
+        self.socket = transport
+
+    def server_bind(self):
+        server,port = self.server_address
+        self.transport.request_port_forward(server, port, self.handler)
+
+    def server_activate(self):
+        pass
+
+    def get_request(self):
+        return self.socket, self.socket.getpeername()
+
+    def start(self):
+        while True:
+            self.socket = self.transport.accept()
+            self.handle_request()
+
+    def handler(self, channel, origin, server):
+        self.socket = channel
+        self._handle_request_noblock()
+
+
+class SocksProxy(TunneledServer, SocksServer):
+    def __init__(self, transport, listen_addr):
+        TunneledServer.__init__(self, transport, listen_addr, SocksHandler)
+
+class HTTPProxy(TunneledServer, SocketServer.ThreadingTCPServer, BaseHTTPServer.HTTPServer):
+    def __init__(self, transport, listen_addr):
+        TunneledServer.__init__(self, transport, listen_addr, HTTPProxyHandler)
+
+
+
 

@@ -49,7 +49,8 @@ setup(
                         'setuptools',
 #                        'Fabric>=1.0',
                         'Fabric',
-#                        'paramiko'
+                        'socksproxy',
+                        'collective.eggproxy',
                         ],
     entry_points = {'zc.buildout': ['default = collective.hostout:Recipe',],
                     'console_scripts': ['hostout = collective.hostout.hostout:main'],
