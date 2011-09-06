@@ -1,7 +1,16 @@
-import BaseHTTPServer, httplib, SocketServer, urllib
+import BaseHTTPServer, httplib, SocketServer, urllib, urlparse
 
 class ProxyHTTPRequestHandler(BaseHTTPServer.BaseHTTPRequestHandler):
     def doCommon(self):
+
+        # Our path could be a full url which some servers don't like (looking at you zope.org)
+        # if the host is the same we'll convert it to a path
+        scheme, netloc, path, query, fragment = urlparse.urlsplit(self.path)
+        if scheme:
+            if query:
+                self.path = "%s?%s" % (path, query)
+            else:
+                self.path = path
 
         req = Request(self)
         req.delHeaders("accept-encoding", "host", "proxy-connection")
@@ -198,5 +207,10 @@ def test(HandlerClass=ProxyHTTPRequestHandler,
          ServerClass=ThreadingHTTPServer):
     BaseHTTPServer.test(HandlerClass, ServerClass)
 
+def start_server():
+    s= BaseHTTPServer.HTTPServer(('localhost',7000), ProxyHTTPRequestHandler)
+    s.serve_forever()
+
+
 if __name__ == '__main__':
-    test()
+    start_server()
