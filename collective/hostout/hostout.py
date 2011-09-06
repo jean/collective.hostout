@@ -36,14 +36,19 @@ from urllib import pathname2url
 import StringIO
 import functools
 from optparse import OptionParser
-from socksproxy.blocking_socks import SocksServer
-from socksproxy.blocking_socks import SocksHandler as SocksHandlerBase
+try:
+    from socksproxy.blocking_socks import SocksServer
+    from socksproxy.blocking_socks import SocksHandler as SocksHandlerBase
+except:
+    SocksServer = None
+    SocksHandlerBase = None
 import SocketServer
 import threading
 import select
 import logging
 from contextlib import closing
-from ProxyHTTPServer import ProxyHTTPRequestHandler
+#from ProxyHTTPServer import ProxyHTTPRequestHandler
+from TinyHTTPProxy import ProxyHandler as ProxyHTTPRequestHandler
 import BaseHTTPServer
 
 #logging.basicConfig(level=logging.DEBUG)
@@ -911,13 +916,14 @@ class buildoutuser(object):
 
 
 
+if SocksServer is not None:
 
-class SocksHandler(SocksHandlerBase):
-    def setup(self):
-        SocksHandlerBase.setup(self)
-        # stupid paramiko doesn't implement closed
-        self.rfile.closed = property(lambda self: self._closed)
-        self.wfile.closed = property(lambda self: self._closed)
+    class SocksHandler(SocksHandlerBase):
+        def setup(self):
+            SocksHandlerBase.setup(self)
+            # stupid paramiko doesn't implement closed
+            self.rfile.closed = property(lambda self: self._closed)
+            self.wfile.closed = property(lambda self: self._closed)
 
 class HTTPProxyHandler(ProxyHTTPRequestHandler):
     def setup(self):
@@ -932,6 +938,8 @@ class TunneledServer(object):
         # skip SocksServer so we can add our own proxy
         SocketServer.ThreadingTCPServer.__init__(self, listen_addr, handler)
         self.socket = transport
+        self.logger = logging.getLogger ("TinyHTTPProxy")
+        self.logger.setLevel (logging.INFO)
 
     def server_bind(self):
         server,port = self.server_address
@@ -941,21 +949,18 @@ class TunneledServer(object):
         pass
 
     def get_request(self):
-        return self.socket, self.socket.getpeername()
-
-    def start(self):
-        while True:
-            self.socket = self.transport.accept()
-            self.handle_request()
+        return self.socket, self.client_address
 
     def handler(self, channel, origin, server):
+        " handler from transport.request_port_forward "
         self.socket = channel
+        self.client_address = origin
         self._handle_request_noblock()
 
-
-class SocksProxy(TunneledServer, SocksServer):
-    def __init__(self, transport, listen_addr):
-        TunneledServer.__init__(self, transport, listen_addr, SocksHandler)
+if SocksServer is not None:
+    class SocksProxy(TunneledServer, SocksServer):
+        def __init__(self, transport, listen_addr):
+            TunneledServer.__init__(self, transport, listen_addr, SocksHandler)
 
 class HTTPProxy(TunneledServer, SocketServer.ThreadingTCPServer, BaseHTTPServer.HTTPServer):
     def __init__(self, transport, listen_addr):

@@ -213,7 +213,7 @@ def buildout(*args):
             pinned = "[buildout]"
             contrib.files.append(pinned, 'pinned.cfg')
         #run generated buildout
-        api.run('%s bin/buildout -c %s %s' % (proxy_cmd(), filename, ' '.join(args)))
+        api.run('%s bin/buildout -c %s -t 1900 %s' % (proxy_cmd(), filename, ' '.join(args)))
 
 def sudobuildout(*args):
     hostout = api.env.get('hostout')
