@@ -142,7 +142,7 @@ class HostOut:
         opt['download_cache']= "%s/%s" % (self.buildout_cache, 'downloads')
         install_base = os.path.dirname(self.getRemoteBuildoutPath())
         if not self.buildout_cache:
-            self.buildout_cache = os.path.join(install_base,'buildout-cache')
+            self.buildout_cache = os.path.join(install_base, 'buildout-cache', self.user)
             opt['buildout-cache'] = self.buildout_cache
 
 
@@ -158,6 +158,7 @@ class HostOut:
         self.options['user'] = self.options.get('user') or self.user or 'root'
         self.options['effective-user'] = self.options.get('effective-user') or self.user or 'root'
         self.options['buildout-user'] = self.options.get('buildout-user') or self.user or 'root'
+        self.options["no-sudo"] = self.options.get("no-sudo") or False
 
         self.options["system-python-use-not"] = self.options.get("system-python-use-not") or False
         self.options["python-prefix"] = self.options.get("python-prefix", os.path.join(install_base, "python"))

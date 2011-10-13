@@ -18,23 +18,47 @@ def run(*cmd):
     proxy = api.env.hostout.http_proxy
 
 
-    with cd( api.env.path):
+    with cd(api.env.path):
         api.run(' '.join(cmd))
 
 def sudo(*cmd):
     """Execute cmd on remote as root user """
-    with cd( api.env.path):
+    if api.env["no-sudo"]:
+        raise Exception ("Can not execute sudo command because no-sudo is set.")
+
+    with cd(api.env.path):
         api.sudo(' '.join(cmd))
 
 def runescalatable(*cmd):
     try:
         with asbuildoutuser():
-            api.run(' '.join(cmd))
+            api.env.hostout.run(' '.join(cmd))
     except:
         try:
-            api.run(' '.join(cmd))
+            api.env.hostout.run(' '.join(cmd))
         except:
-            api.sudo(' '.join(cmd))
+            api.env.hostout.sudo(' '.join(cmd))
+
+
+def requireOwnership (file, user=None, group=None, recursive=False):
+
+    if bool(user) !=  bool(group):  # logical xor
+        signature = user or group
+        sigFormat = (user and "%U") or "%G"
+    else:
+        signature = "%s:%s" % (user, group)
+        sigFormat = "%U:%G"
+
+    if recursive:
+        opt = "-R"
+    else:
+        opt = ""
+
+    getOwnerGroupCmd = "stat --format=%s '%s'" % (sigFormat, file)
+    chownCmd = "chown %(opt)s %(signature)s '%(file)s'" % locals()
+
+    api.env.hostout.runescalatable ('[ `%(getOwnerGroupCmd)s` == "%(signature)s" ] || %(chownCmd)s' % locals())
+
 
 
 def put(file, target=None):
@@ -215,6 +239,9 @@ def buildout(*args):
         #run generated buildout
         api.run('%s bin/buildout -c %s -t 1900 %s' % (proxy_cmd(), filename, ' '.join(args)))
 
+        # Update the var dir permissions to add group write
+        api.run("chmod --silent --recursive g+w var")
+
 def sudobuildout(*args):
     hostout = api.env.get('hostout')
     hostout.getHostoutPackage() # we need this work out releaseid
@@ -313,10 +340,8 @@ def setowners():
 #    api.sudo("chmod g+s `find %(path)s -type d` || find %(path)s -type d -exec chmod g+s '{}' \;" % locals()) # so new files will keep same group
 #    api.sudo("chmod g+s `find %(path)s -type d` || find %(path)s -type d -exec chmod g+s '{}' \;" % locals()) # so new files will keep same group
     
-    for cache in [bc, dl, ec]:
-        #HACK Have to deal with a shared cache. maybe need some kind of group
-        api.env.hostout.runescalatable('mkdir -p %(cache)s && chown -R %(buildout)s:%(buildoutgroup)s %(cache)s && ' \
-                 ' chmod -R ug+rw,a+r %(cache)s ' % locals())
+    api.env.hostout.runescalatable('mkdir -p %s %s/dist %s' % (bc, dl, ec))
+
 
     #api.sudo('sudo -u $(effectiveuser) sh -c "export HOME=~$(effectiveuser) && cd $(install_dir) && bin/buildout -c $(hostout_file)"')
 
@@ -358,12 +383,23 @@ def bootstrap_users():
             #Copy authorized keys to buildout user:
             key_filename, key = api.env.hostout.getIdentityKey()
             for owner in [api.env['buildout-user']]:
-                api.sudo("mkdir -p ~%s/.ssh" % owner)
-                api.sudo('touch ~%s/.ssh/authorized_keys' % owner)
+
+                # if user is the same as the current user then no need to run
+                # as sudo
+                if owner == api.env["user"]:
+                    use_sudo = False
+                    run = api.run
+                else:
+                    use_sudo = True
+                    run = api.sudo
+                
+                run("mkdir -p ~%s/.ssh" % owner)
+                run('touch ~%s/.ssh/authorized_keys' % owner)
                 fabric.contrib.files.append( text=key,
                         filename='~%s/.ssh/authorized_keys' % owner,
-                        use_sudo=True )
-                api.sudo("chown -R %(owner)s ~%(owner)s/.ssh" % locals() )
+                        use_sudo=use_sudo )
+                run("chown -R %(owner)s ~%(owner)s/.ssh" % locals() )
+
         except:
             raise Exception ("Was not able to create buildout-user ssh keys, please set buildout-password insted.")
 
@@ -378,11 +414,22 @@ def bootstrap_buildout():
     buildout = api.env['buildout-user']
     buildoutgroup = api.env['buildout-group']
     # create buildout dir
-    api.env.hostout.runescalatable ('mkdir -p -m ug+x %(path)s && chown %(buildout)s:%(buildoutgroup)s %(path)s' % dict(
+
+    if path[0] == "/":
+        save_path = api.env.path # the pwd may not yet exist
+        api.env.path = "/"
+
+    api.env.hostout.runescalatable ('mkdir -p -m ug+x %(path)s' % dict(
         path=path,
         buildout=buildout,
         buildoutgroup=buildoutgroup,
     ))
+
+    if path[0] == "/":
+        api.env.path = save_path # restore the pwd
+
+    api.env.hostout.requireOwnership (path, user=buildout, group=buildoutgroup, recursive=True)
+
     # ensure buildout user and group and cd in (ug+x)
     parts = path.split('/')
     for i in range(2, len(parts)):
@@ -392,17 +439,13 @@ def bootstrap_buildout():
             print sys.stderr, "Warning: Not able to chmod ug+x on dir " + os.path.join(*parts[:i])
 
 
-
-
     buildoutcache = api.env['buildout-cache']
-    api.env.hostout.runescalatable ('mkdir -p %s/eggs' % buildoutcache)
-    api.env.hostout.runescalatable ('mkdir -p %s/downloads/dist' % buildoutcache)
-    api.env.hostout.runescalatable ('mkdir -p %s/extends' % buildoutcache)
+    api.env.hostout.runescalatable ('mkdir -p %s' % os.path.join(buildoutcache, "eggs"))
+    api.env.hostout.runescalatable ('mkdir -p %s' % os.path.join(buildoutcache, "download/dist"))
+    api.env.hostout.runescalatable ('mkdir -p %s' % os.path.join(buildoutcache, "extends"))
 
-    try:
-        api.env.hostout.runescalatable ('chown -R %s:%s %s' % (buildout, buildoutgroup, buildoutcache))
-    except:
-        print sys.stderr, "Warning: Not able to chown on the buildout cache dir"
+    api.env.hostout.requireOwnership (buildoutcache, user=buildout, recursive=True)
+
 
     api.env.hostout.setowners()
 
