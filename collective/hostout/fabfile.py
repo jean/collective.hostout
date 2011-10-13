@@ -240,7 +240,7 @@ def buildout(*args):
         api.run('%s bin/buildout -c %s -t 1900 %s' % (proxy_cmd(), filename, ' '.join(args)))
 
         # Update the var dir permissions to add group write
-        api.run("chmod --silent --recursive g+w var")
+        api.run("chmod --recursive g+w var || echo")
 
 def sudobuildout(*args):
     hostout = api.env.get('hostout')
