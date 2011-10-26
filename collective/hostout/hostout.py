@@ -36,6 +36,22 @@ from urllib import pathname2url
 import StringIO
 import functools
 from optparse import OptionParser
+try:
+    from socksproxy.blocking_socks import SocksServer
+    from socksproxy.blocking_socks import SocksHandler as SocksHandlerBase
+except:
+    SocksServer = None
+    SocksHandlerBase = None
+import SocketServer
+import threading
+import select
+import logging
+from contextlib import closing
+#from ProxyHTTPServer import ProxyHTTPRequestHandler
+from TinyHTTPProxy import ProxyHandler as ProxyHTTPRequestHandler
+import BaseHTTPServer
+
+#logging.basicConfig(level=logging.DEBUG)
 
 
 
@@ -126,7 +142,7 @@ class HostOut:
         opt['download_cache']= "%s/%s" % (self.buildout_cache, 'downloads')
         install_base = os.path.dirname(self.getRemoteBuildoutPath())
         if not self.buildout_cache:
-            self.buildout_cache = os.path.join(install_base,'buildout-cache')
+            self.buildout_cache = os.path.join(install_base, 'buildout-cache', self.user)
             opt['buildout-cache'] = self.buildout_cache
 
 
@@ -142,11 +158,14 @@ class HostOut:
         self.options['user'] = self.options.get('user') or self.user or 'root'
         self.options['effective-user'] = self.options.get('effective-user') or self.user or 'root'
         self.options['buildout-user'] = self.options.get('buildout-user') or self.user or 'root'
+        self.options["no-sudo"] = self.options.get("no-sudo") or False
 
         self.options["force-python-compile"] = self.options.get("system-python-use-not", self.options.get('force-python-compile', 'False'))
         self.options["force-python-compile"] = self.options["force-python-compile"] in ['True','true','yes','Yes']
         self.options["python-path"] = self.options.get("python-path", os.path.join(install_base, "python"))
-        
+        self.options["python-prefix"] = self.options.get("python-prefix", os.path.join(install_base, "python"))
+        self.options['tunnel'] = self.options.get("tunnel") or False
+
         self.firstrun = True
 
     def getPreCommands(self):
@@ -243,7 +262,6 @@ class HostOut:
 
         #config_file = self.buildout_cfg
         files = set()
-        #import pdb; pdb.set_trace()
         for file in self.buildout_cfg:
             files = files.union( set(get_all_extends(file)))
         files = files.union( set(self.getBuildoutDependencies()))
@@ -277,6 +295,32 @@ class HostOut:
         else:
             key = RSAKey.from_private_key_file(keyfile)
         return keyfile, "ssh-rsa %s hostout@hostout" % key.get_base64()
+
+    @property
+    def socks_proxy(self):
+        " Create a tunnel back to the dev server and start a socks proxy, returning the remote connection string "
+        if not self.options.get("tunnel",False):
+            return ''
+        
+        from fabric.state import connections
+        transport = connections[api.env.host_string].get_transport()
+        if getattr(self,'socks_server',None) is None:
+            self.socks_server = SocksProxy(transport, ('127.0.0.1', 7000))
+
+        return '127.0.0.1:7000'
+
+    @property
+    def http_proxy(self):
+        " Create a tunnel back to the dev server and start a socks proxy, returning the remote connection string "
+        if not self.options.get("tunnel",False):
+            return ''
+
+        from fabric.state import connections
+        transport = connections[api.env.host_string].get_transport()
+        if getattr(self,'http_server',None) is None:
+            self.http_server = HTTPProxy(transport, ('127.0.0.1', 7001))
+
+        return '127.0.0.1:7001'
 
     def readsshconfig(self):
         config = os.path.expanduser('~/.ssh/config')
@@ -871,4 +915,60 @@ class buildoutuser(object):
                 api.env.password = password
             else:
                 del api.env.password
+
+
+
+
+if SocksServer is not None:
+
+    class SocksHandler(SocksHandlerBase):
+        def setup(self):
+            SocksHandlerBase.setup(self)
+            # stupid paramiko doesn't implement closed
+            self.rfile.closed = property(lambda self: self._closed)
+            self.wfile.closed = property(lambda self: self._closed)
+
+class HTTPProxyHandler(ProxyHTTPRequestHandler):
+    def setup(self):
+        ProxyHTTPRequestHandler.setup(self)
+        # stupid paramiko doesn't implement closed
+        self.rfile.closed = property(lambda self: self._closed)
+        self.wfile.closed = property(lambda self: self._closed)
+
+class TunneledServer(object):
+    def __init__(self, transport, listen_addr, handler):
+        self.transport = transport
+        # skip SocksServer so we can add our own proxy
+        SocketServer.ThreadingTCPServer.__init__(self, listen_addr, handler)
+        self.socket = transport
+        self.logger = logging.getLogger ("TinyHTTPProxy")
+        self.logger.setLevel (logging.INFO)
+
+    def server_bind(self):
+        server,port = self.server_address
+        self.transport.request_port_forward(server, port, self.handler)
+
+    def server_activate(self):
+        pass
+
+    def get_request(self):
+        return self.socket, self.client_address
+
+    def handler(self, channel, origin, server):
+        " handler from transport.request_port_forward "
+        self.socket = channel
+        self.client_address = origin
+        self._handle_request_noblock()
+
+if SocksServer is not None:
+    class SocksProxy(TunneledServer, SocksServer):
+        def __init__(self, transport, listen_addr):
+            TunneledServer.__init__(self, transport, listen_addr, SocksHandler)
+
+class HTTPProxy(TunneledServer, SocketServer.ThreadingTCPServer, BaseHTTPServer.HTTPServer):
+    def __init__(self, transport, listen_addr):
+        TunneledServer.__init__(self, transport, listen_addr, HTTPProxyHandler)
+
+
+
 

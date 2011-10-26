@@ -8,28 +8,57 @@ from collective.hostout.hostout import buildoutuser, asbuildoutuser
 from fabric.context_managers import cd
 from pkg_resources import resource_filename
 import tempfile
-    
+
+
 
 @buildoutuser
 def run(*cmd):
     """Execute cmd on remote as login user """
-    with cd( api.env.path):
+    proxy = api.env.hostout.socks_proxy
+    proxy = api.env.hostout.http_proxy
+
+
+    with cd(api.env.path):
         api.run(' '.join(cmd))
 
 def sudo(*cmd):
     """Execute cmd on remote as root user """
-    with cd( api.env.path):
+    if api.env["no-sudo"]:
+        raise Exception ("Can not execute sudo command because no-sudo is set.")
+
+    with cd(api.env.path):
         api.sudo(' '.join(cmd))
 
 def runescalatable(*cmd):
     try:
         with asbuildoutuser():
-            api.run(' '.join(cmd))
+            api.env.hostout.run(' '.join(cmd))
     except:
         try:
-            api.run(' '.join(cmd))
+            api.env.hostout.run(' '.join(cmd))
         except:
-            api.sudo(' '.join(cmd))
+            api.env.hostout.sudo(' '.join(cmd))
+
+
+def requireOwnership (file, user=None, group=None, recursive=False):
+
+    if bool(user) !=  bool(group):  # logical xor
+        signature = user or group
+        sigFormat = (user and "%U") or "%G"
+    else:
+        signature = "%s:%s" % (user, group)
+        sigFormat = "%U:%G"
+
+    if recursive:
+        opt = "-R"
+    else:
+        opt = ""
+
+    getOwnerGroupCmd = "stat --format=%s '%s'" % (sigFormat, file)
+    chownCmd = "chown %(opt)s %(signature)s '%(file)s'" % locals()
+
+    api.env.hostout.runescalatable ('[ `%(getOwnerGroupCmd)s` == "%(signature)s" ] || %(chownCmd)s' % locals())
+
 
 
 def put(file, target=None):
@@ -208,7 +237,10 @@ def buildout(*args):
             pinned = "[buildout]"
             contrib.files.append(pinned, 'pinned.cfg')
         #run generated buildout
-        api.run('bin/buildout -c %s %s' % (filename, ' '.join(args)))
+        api.run('%s bin/buildout -c %s -t 1900 %s' % (proxy_cmd(), filename, ' '.join(args)))
+
+        # Update the var dir permissions to add group write
+        api.run("find var -exec chmod g+w {} \; || true")
 
 def sudobuildout(*args):
     hostout = api.env.get('hostout')
@@ -258,7 +290,8 @@ def bootstrap():
 
     try:
         with asbuildoutuser():
-            api.run(python + " --version")
+            with cd(api.env["python-prefix"]+'/bin'):
+                api.run(python + " --version")
     except:
         if api.env.get('force-python-compile') and api.env.get("python-path"):
             api.env.hostout.bootstrap_python()
@@ -292,26 +325,25 @@ def setowners():
     api.env.hostout.runescalatable ("find %(path)s  -maxdepth 0 ! -name var -exec chown -R %(buildout)s:%(buildoutgroup)s '{}' \; " \
              " -exec chmod -R u+rw,g+r-w,o-rw '{}' \;" % locals())
 
-    api.env.hostout.runescalatable ('mkdir -p %(var)s' % locals()) 
+    api.env.hostout.runescalatable ('mkdir -p %(var)s' % locals())
+#    api.run('mkdir -p %(var)s' % dict(var=var))
 
-    try:
-        api.env.hostout.runescalatable (\
-                '[ `stat -c %%U:%%G %(var)s` = "%(effective)s:%(buildoutgroup)s" ] || ' \
-                'chown -R %(effective)s:%(buildoutgroup)s %(var)s ' % locals())
-        api.env.hostout.runescalatable ( '[ `stat -c %%A %(var)s` = "drwxrws--x" ] || chmod -R u+rw,g+wrs,o-rw %(var)s ' % locals())
-    except:
-        raise Exception ("Was not able to set owner and permissions on "\
-                    "%(var)s to %(effective)s:%(buildoutgroup)s with u+rw,g+wrs,o-rw" % locals() )
+#    try:
+#        api.env.hostout.runescalatable (\
+#                '[ `stat -c %%U:%%G %(var)s` = "%(effective)s:%(buildoutgroup)s" ] || ' \
+#                'chown -R %(effective)s:%(buildoutgroup)s %(var)s ' % locals())
+#        api.env.hostout.runescalatable ( '[ `stat -c %%A %(var)s` = "drwxrws--x" ] || chmod -R u+rw,g+wrs,o-rw %(var)s ' % locals())
+#    except:
+#        raise Exception ("Was not able to set owner and permissions on "\
+#                    "%(var)s to %(effective)s:%(buildoutgroup)s with u+rw,g+wrs,o-rw" % locals() )
         
 
 #    api.sudo("chmod g+x `find %(path)s -perm -g-x` || find %(path)s -perm -g-x -exec chmod g+x '{}' \;" % locals()) #so effective can execute code
 #    api.sudo("chmod g+s `find %(path)s -type d` || find %(path)s -type d -exec chmod g+s '{}' \;" % locals()) # so new files will keep same group
 #    api.sudo("chmod g+s `find %(path)s -type d` || find %(path)s -type d -exec chmod g+s '{}' \;" % locals()) # so new files will keep same group
     
-    for cache in [bc, dl, ec]:
-        #HACK Have to deal with a shared cache. maybe need some kind of group
-        api.env.hostout.runescalatable('mkdir -p %(cache)s && chown -R %(buildout)s:%(buildoutgroup)s %(cache)s && ' \
-                 ' chmod -R ug+rw,a+r %(cache)s ' % locals())
+    api.env.hostout.runescalatable('mkdir -p %s %s/dist %s' % (bc, dl, ec))
+
 
     #api.sudo('sudo -u $(effectiveuser) sh -c "export HOME=~$(effectiveuser) && cd $(install_dir) && bin/buildout -c $(hostout_file)"')
 
@@ -348,21 +380,30 @@ def bootstrap_users():
                     " Buildout User: %(buildout)s, Effective User: %(effective)s, Common Buildout Group: %(buildoutgroup)s")
                     % locals() )
 
+    if not api.env.get("buildout-password",None):
+        try:
+            #Copy authorized keys to buildout user:
+            key_filename, key = api.env.hostout.getIdentityKey()
+            for owner in [api.env['buildout-user']]:
 
-    # test if we already have a connection
-#    if not api.env.get("buildout-password",None):
-    try:
-        #Copy authorized keys to buildout user:
-        key_filename, key = api.env.hostout.getIdentityKey()
-        for owner in [api.env['buildout-user']]:
-            api.sudo("mkdir -p ~%s/.ssh" % owner)
-            api.sudo('touch ~%s/.ssh/authorized_keys' % owner)
-            fabric.contrib.files.append( text=key,
-                    filename='~%s/.ssh/authorized_keys' % owner,
-                    use_sudo=True )
-            api.sudo("chown -R %(owner)s ~%(owner)s/.ssh" % locals() )
-    except:
-        raise Exception ("Was not able to create buildout-user ssh keys, please set buildout-password insted.")
+                # if user is the same as the current user then no need to run
+                # as sudo
+                if owner == api.env["user"]:
+                    use_sudo = False
+                    run = api.run
+                else:
+                    use_sudo = True
+                    run = api.sudo
+                
+                run("mkdir -p ~%s/.ssh" % owner)
+                run('touch ~%s/.ssh/authorized_keys' % owner)
+                fabric.contrib.files.append( text=key,
+                        filename='~%s/.ssh/authorized_keys' % owner,
+                        use_sudo=use_sudo )
+                run("chown -R %(owner)s ~%(owner)s/.ssh" % locals() )
+
+        except:
+            raise Exception ("Was not able to create buildout-user ssh keys, please set buildout-password insted.")
 
 
 def bootstrap_buildout():
@@ -375,11 +416,22 @@ def bootstrap_buildout():
     buildout = api.env['buildout-user']
     buildoutgroup = api.env['buildout-group']
     # create buildout dir
-    api.env.hostout.runescalatable ('mkdir -p -m ug+x %(path)s && chown %(buildout)s:%(buildoutgroup)s %(path)s' % dict(
+
+    if path[0] == "/":
+        save_path = api.env.path # the pwd may not yet exist
+        api.env.path = "/"
+
+    api.env.hostout.runescalatable ('mkdir -p -m ug+x %(path)s' % dict(
         path=path,
         buildout=buildout,
         buildoutgroup=buildoutgroup,
     ))
+
+    if path[0] == "/":
+        api.env.path = save_path # restore the pwd
+
+    api.env.hostout.requireOwnership (path, user=buildout, group=buildoutgroup, recursive=True)
+
     # ensure buildout user and group and cd in (ug+x)
     parts = path.split('/')
     for i in range(2, len(parts)):
@@ -389,17 +441,13 @@ def bootstrap_buildout():
             print sys.stderr, "Warning: Not able to chmod ug+x on dir " + os.path.join(*parts[:i])
 
 
-
-
     buildoutcache = api.env['buildout-cache']
-    api.env.hostout.runescalatable ('mkdir -p %s/eggs' % buildoutcache)
-    api.env.hostout.runescalatable ('mkdir -p %s/downloads/dist' % buildoutcache)
-    api.env.hostout.runescalatable ('mkdir -p %s/extends' % buildoutcache)
+    api.env.hostout.runescalatable ('mkdir -p %s' % os.path.join(buildoutcache, "eggs"))
+    api.env.hostout.runescalatable ('mkdir -p %s' % os.path.join(buildoutcache, "download/dist"))
+    api.env.hostout.runescalatable ('mkdir -p %s' % os.path.join(buildoutcache, "extends"))
 
-    try:
-        api.env.hostout.runescalatable ('chown -R %s:%s %s' % (buildout, buildoutgroup, buildoutcache))
-    except:
-        print sys.stderr, "Warning: Not able to chown on the buildout cache dir"
+    api.env.hostout.requireOwnership (buildoutcache, user=buildout, recursive=True)
+
 
     api.env.hostout.setowners()
 
@@ -425,7 +473,13 @@ def bootstrap_buildout():
                 python = "PATH=\$PATH:\"%s\"; %s" % (pythonpath, python)
 
             # Bootstrap baby!
-            api.run('%s bootstrap.py --distribute' % python)
+            try:
+                api.run('%s %s bootstrap.py --distribute' % (proxy_cmd(), python) )
+            except:
+                python = os.path.join (api.env["python-prefix"], "bin/", python)
+                api.run('%s %s bootstrap.py --distribute' % (proxy_cmd(), python) )
+
+
 
 def bootstrap_buildout_ubuntu():
     
@@ -489,40 +543,42 @@ extra_options +=
 
         api.sudo('svn co http://svn.plone.org/svn/collective/buildout/python/')
         with cd('python'):
-            api.sudo('curl -O http://python-distribute.org/distribute_setup.py')
-            api.sudo('python distribute_setup.py')
-            api.sudo('python bootstrap.py --distribute')
+            get_url('http://python-distribute.org/distribute_setup.py')
+            api.sudo('%s python distribute_setup.py'% proxy_cmd())
+            api.sudo('%s python bootstrap.py --distribute' % proxy_cmd())
             fabric.contrib.files.append('buildout.cfg', BUILDOUT%locals(), use_sudo=True)
-            api.sudo('bin/buildout')
+            api.sudo('%s bin/buildout'%proxy_cmd())
     api.env['python'] = "source /var/buildout-python/python/python-%(major)s/bin/activate; python "
         
     #ensure bootstrap files have correct owners
     hostout.setowners()
 
-def bootstrap_python():
+def bootstrap_python(extra_args=""):
     version = api.env['python-version']
 
     versionParsed = '.'.join(version.split('.')[:3])
     
     d = dict(version=versionParsed)
     
-    prefix = api.env.get("python-path")
+    prefix = api.env["python-prefix"]
     if not prefix:
         raise "No path for python set"
     runescalatable('mkdir -p %s' % prefix)
-
+    #api.run("([-O %s])"%prefix)
+    
     with asbuildoutuser():
       with cd('/tmp'):
-        api.run('curl http://python.org/ftp/python/%(version)s/Python-%(version)s.tgz > Python-%(version)s.tgz'%d)
+        get_url('http://python.org/ftp/python/%(version)s/Python-%(version)s.tgz'%d)
         api.run('tar -xzf Python-%(version)s.tgz'%d)
         with cd('Python-%(version)s'%d):
 #            api.run("sed 's/#readline/readline/' Modules/Setup.dist > TMPFILE && mv TMPFILE Modules/Setup.dist")
 #            api.run("sed 's/#_socket/_socket/' Modules/Setup.dist > TMPFILE && mv TMPFILE Modules/Setup.dist")
             
-            api.run('./configure --prefix=%(prefix)s  --enable-unicode=ucs4 --with-threads --with-readline --with-dbm --with-zlib --with-ssl --with-bz2' % locals())
+            api.run('./configure --prefix=%(prefix)s  --enable-unicode=ucs4 --with-threads --with-readline --with-dbm --with-zlib --with-ssl --with-bz2 %(extra_args)s' % locals())
             api.run('make')
-            api.run('make altinstall')
+            runescalatable('make altinstall')
         api.run("rm -rf /tmp/Python-%(version)s"%d)
+    api.env["system-python-use-not"] = True
 
 
 
@@ -670,12 +726,24 @@ def bootstrap_python_redhat():
 #            'libxslt libxslt-devel ')
 
 
+def bootstrap_python_slackware():
+    urls = [
+        'http://carroll.cac.psu.edu/pub/linux/distributions/slackware/slackware-11.0/slackware/l/zlib-1.2.3-i486-1.tgz'
+        ]
+    for url in urls:
+        with cd('/tmp'):
+            get_url(url)
+            pkg = url.rsplit('/',1)[-1]
+            api.sudo('installpkg %s'%pkg)
+            api.run("rm %s"%pkg)
+    api.env.hostout.bootstrap_python(extra_args="--with-zlib=/usr/include/zlib.h")
+
 
 def detecthostos():
     #http://wiki.linuxquestions.org/wiki/Find_out_which_linux_distribution_a_system_belongs_to
     # extra ; because of how fabric uses bash now
     hostos = api.run(
-        ";([ -e /etc/SuSE-release ] && echo SuSE) || "
+        "([ -e /etc/SuSE-release ] && echo SuSE) || "
                 "([ -e /etc/redhat-release ] && echo redhat) || "
                 "([ -e /etc/fedora-release ] && echo fedora) || "
                 "(lsb_release -is) || "
@@ -743,20 +811,18 @@ RETVAL=0
 
 start() {
     echo -n "Starting $NAME: "
-    pushd $BUILDOUT
+    cd $BUILDOUT
     %(startcmd)s
     RETVAL=$?
-    popd
     echo
     return $RETVAL
 }
 
 stop() {
     echo -n "Stopping $NAME: "
-    pushd $BUILDOUT
+    cd $BUILDOUT
     %(stopcmd)s
     RETVAL=$?
-    popd
     echo
     return $RETVAL
 }
@@ -809,5 +875,15 @@ def bootscript_list():
     api.run ("ls -l /etc/init.d/buildout-*")
 
 
+def proxy_cmd():
+    if api.env.hostout.http_proxy:
+        return 'export HTTP_PROXY="http://%s" && '% api.env.hostout.http_proxy
+    else:
+        return ''
 
-
+def get_url(curl):
+    proxy = api.env.hostout.socks_proxy
+    if proxy:
+        api.run('curl --socks5 %s -O %s' % (proxy, curl) )
+    else:
+        api.run('curl -O %s' % curl)
