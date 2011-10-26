@@ -143,8 +143,9 @@ class HostOut:
         self.options['effective-user'] = self.options.get('effective-user') or self.user or 'root'
         self.options['buildout-user'] = self.options.get('buildout-user') or self.user or 'root'
 
-        self.options["system-python-use-not"] = self.options.get("system-python-use-not") or False
-        self.options["python-prefix"] = self.options.get("python-prefix", os.path.join(install_base, "python"))
+        self.options["force-python-compile"] = self.options.get("system-python-use-not", self.options.get('force-python-compile', 'False'))
+        self.options["force-python-compile"] = self.options["force-python-compile"] in ['True','true','yes','Yes']
+        self.options["python-path"] = self.options.get("python-path", os.path.join(install_base, "python"))
         
         self.firstrun = True
 

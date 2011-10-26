@@ -252,14 +252,19 @@ def bootstrap():
     cmd()
 
     python = 'python%(major)s' % d
-    if api.env["system-python-use-not"]:
-        python = os.path.join (api.env["python-prefix"], "bin/", python)
+    if api.env.get("python-path"):
+        pythonpath = os.path.join (api.env.get("python-path"),'bin')
+        python = "PATH=\$PATH:\"%s\"; %s" % (pythonpath, python)
 
     try:
-        api.run(python + " --version")
+        with asbuildoutuser():
+            api.run(python + " --version")
     except:
-        cmd = getattr(api.env.hostout, 'bootstrap_python_%s'%hostos, api.env.hostout.bootstrap_python)
-        cmd()
+        if api.env.get('force-python-compile') and api.env.get("python-path"):
+            api.env.hostout.bootstrap_python()
+        else:
+            cmd = getattr(api.env.hostout, 'bootstrap_python_%s'%hostos, api.env.hostout.bootstrap_python)
+            cmd()
 
     cmd = getattr(api.env.hostout, 'bootstrap_buildout_%s'%hostos, api.env.hostout.bootstrap_buildout)
     cmd()
@@ -326,7 +331,7 @@ def bootstrap_users():
     owner = buildout
 
     try:
-        api.run ("egrep ^%(owner)s: /etc/passwd && egrep ^%(effective)s: /etc/passwd  && egrep ^%(buildoutgroup)s: /etc/group" % locals()) 
+        api.run ("egrep ^%(owner)s: /etc/passwd && egrep ^%(effective)s: /etc/passwd  && egrep ^%(buildoutgroup)s: /etc/group" % locals())
 
     except:
         try:
@@ -343,19 +348,21 @@ def bootstrap_users():
                     " Buildout User: %(buildout)s, Effective User: %(effective)s, Common Buildout Group: %(buildoutgroup)s")
                     % locals() )
 
-    if not api.env["buildout-password"]:
-        try:
-            #Copy authorized keys to buildout user:
-            key_filename, key = api.env.hostout.getIdentityKey()
-            for owner in [api.env['buildout-user']]:
-                api.sudo("mkdir -p ~%s/.ssh" % owner)
-                api.sudo('touch ~%s/.ssh/authorized_keys' % owner)
-                fabric.contrib.files.append( text=key,
-                        filename='~%s/.ssh/authorized_keys' % owner,
-                        use_sudo=True )
-                api.sudo("chown -R %(owner)s ~%(owner)s/.ssh" % locals() )
-        except:
-            raise Exception ("Was not able to create buildout-user ssh keys, please set buildout-password insted.")
+
+    # test if we already have a connection
+#    if not api.env.get("buildout-password",None):
+    try:
+        #Copy authorized keys to buildout user:
+        key_filename, key = api.env.hostout.getIdentityKey()
+        for owner in [api.env['buildout-user']]:
+            api.sudo("mkdir -p ~%s/.ssh" % owner)
+            api.sudo('touch ~%s/.ssh/authorized_keys' % owner)
+            fabric.contrib.files.append( text=key,
+                    filename='~%s/.ssh/authorized_keys' % owner,
+                    use_sudo=True )
+            api.sudo("chown -R %(owner)s ~%(owner)s/.ssh" % locals() )
+    except:
+        raise Exception ("Was not able to create buildout-user ssh keys, please set buildout-password insted.")
 
 
 def bootstrap_buildout():
@@ -413,8 +420,9 @@ def bootstrap_buildout():
             version = api.env['python-version']
             major = '.'.join(version.split('.')[:2])
             python = 'python%s' % major
-            if api.env["system-python-use-not"]:
-                python = os.path.join (api.env["python-prefix"], "bin/", python)
+            if api.env.get("python-path"):
+                pythonpath = os.path.join (api.env.get("python-path"),'bin')
+                python = "PATH=\$PATH:\"%s\"; %s" % (pythonpath, python)
 
             # Bootstrap baby!
             api.run('%s bootstrap.py --distribute' % python)
@@ -498,10 +506,13 @@ def bootstrap_python():
     
     d = dict(version=versionParsed)
     
-    prefix = api.env["python-prefix"]
-    api.run('mkdir -p %s' % prefix)
-    
-    with cd('/tmp'):
+    prefix = api.env.get("python-path")
+    if not prefix:
+        raise "No path for python set"
+    runescalatable('mkdir -p %s' % prefix)
+
+    with asbuildoutuser():
+      with cd('/tmp'):
         api.run('curl http://python.org/ftp/python/%(version)s/Python-%(version)s.tgz > Python-%(version)s.tgz'%d)
         api.run('tar -xzf Python-%(version)s.tgz'%d)
         with cd('Python-%(version)s'%d):
@@ -616,37 +627,33 @@ def bootstrap_python_redhat():
         pass
 
     
-    if api.env["system-python-use-not"]:
+    # RedHat pacakge management install
+
+    # Redhat/centos don't have Python 2.6 or 2.7 in stock yum repos, use
+    # EPEL.  Could also use RPMforge repo:
+    # http://dag.wieers.com/rpm/FAQ.php#B
+    api.sudo("rpm -Uvh --force http://download.fedora.redhat.com/pub/epel/5/i386/epel-release-5-4.noarch.rpm")
+    version = api.env['python-version']
+    python_versioned = 'python' + ''.join(version.split('.')[:2])
+
+    try:
+        api.sudo('yum -y install gcc gcc-c++ ')
+
+        api.sudo('yum -y install ' +
+                 python_versioned + ' ' +
+                 python_versioned + '-devel ' +
+                 'python-setuptools '
+                 'libxml2-python '
+                 'python-elementtree '
+                 'ncurses-devel '
+                 'zlib zlib-devel '
+                 'readline-devel '
+                 'bzip2-devel '
+                 'openssl openssl-dev '
+                 )
+    except:
+        # Couldn't install from rpm - failover build
         python_build()
-
-    else:
-        # RedHat pacakge management install
-
-        # Redhat/centos don't have Python 2.6 or 2.7 in stock yum repos, use
-        # EPEL.  Could also use RPMforge repo:
-        # http://dag.wieers.com/rpm/FAQ.php#B
-        api.sudo("rpm -Uvh --force http://download.fedora.redhat.com/pub/epel/5/i386/epel-release-5-4.noarch.rpm")
-        version = api.env['python-version']
-        python_versioned = 'python' + ''.join(version.split('.')[:2])
-
-        try:
-            api.sudo('yum -y install gcc gcc-c++ ')
-
-            api.sudo('yum -y install ' +
-                     python_versioned + ' ' +
-                     python_versioned + '-devel ' +
-                     'python-setuptools '
-                     'libxml2-python '
-                     'python-elementtree '
-                     'ncurses-devel '
-                     'zlib zlib-devel '
-                     'readline-devel '
-                     'bzip2-devel '
-                     'openssl openssl-dev '
-                     )
-        except:
-            # Couldn't install from rpm - failover build
-            python_build()
 
 #optional stuff
 #    api.sudo('yum -y install ' +
