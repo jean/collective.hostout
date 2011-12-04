@@ -66,7 +66,8 @@ def put(file, target=None):
     if os.path.isdir(file):
         uploads = os.walk(file)
     else:
-        uploads = None, None, [file]
+        path = file.split('/')
+        uploads = [('/'.join(path[:-1]), [], [path[-1]])]
     with asbuildoutuser():
         for root, dirs, files in uploads:
             for dir in dirs:
@@ -237,7 +238,8 @@ def buildout(*args):
             pinned = "[buildout]"
             contrib.files.append(pinned, 'pinned.cfg')
         #run generated buildout
-        api.run('%s bin/buildout -c %s -t 1900 %s' % (proxy_cmd(), filename, ' '.join(args)))
+#        api.run('%s bin/buildout -c %s -t 1900 %s' % (proxy_cmd(), filename, ' '.join(args)))
+        api.run('%s bin/buildout -c %s %s' % (proxy_cmd(), filename, ' '.join(args)))
 
         # Update the var dir permissions to add group write
         api.run("find var -exec chmod g+w {} \; || true")
@@ -381,9 +383,9 @@ def bootstrap_users():
                     % locals() )
 
     if not api.env.get("buildout-password",None):
+        key_filename, key = api.env.hostout.getIdentityKey()
         try:
             #Copy authorized keys to buildout user:
-            key_filename, key = api.env.hostout.getIdentityKey()
             for owner in [api.env['buildout-user']]:
 
                 # if user is the same as the current user then no need to run
