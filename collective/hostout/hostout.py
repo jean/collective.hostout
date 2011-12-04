@@ -24,6 +24,10 @@ import sys
 from itertools import chain
 import re
 from paramiko import RSAKey
+try:
+    from paramiko import DSAKey
+except:
+    DSAKey = None
 from paramiko import SSHConfig
 from fabric import api
 from fabric.state import output
@@ -293,7 +297,10 @@ class HostOut:
             key = RSAKey.generate(1024)
             key.write_private_key_file(keyfile)
         else:
-            key = RSAKey.from_private_key_file(keyfile)
+            try:
+                key = DSAKey.from_private_key_file(keyfile)
+            except:
+                key = RSAKey.from_private_key_file(keyfile)
         return keyfile, "ssh-rsa %s hostout@hostout" % key.get_base64()
 
     @property
