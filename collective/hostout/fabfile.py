@@ -14,12 +14,13 @@ import tempfile
 @buildoutuser
 def run(*cmd):
     """Execute cmd on remote as login user """
-    proxy = api.env.hostout.socks_proxy
-    proxy = api.env.hostout.http_proxy
-
 
     with cd( api.env.path):
-        api.run(' '.join(cmd))
+        proxy = proxy_cmd()
+        if proxy:
+            api.run("%s %s" % (proxy,' '.join(cmd)))
+        else:
+            api.run(' '.join(cmd))
 
 def sudo(*cmd):
     """Execute cmd on remote as root user """
@@ -70,8 +71,9 @@ def get(file, target=None):
     """Download the specified files from the remote buildout folder"""
     if not target:
         target = file
-    with cd(api.env.path):
-        api.get(file, target)
+    if not file.startswith('/'):
+        file = api.env.path + '/' + file
+    api.get(file, target)
 
 def deploy():
     "predeploy, uploadeggs, uploadbuildout, buildout and then postdeploy"
@@ -295,6 +297,8 @@ def setowners():
     
     api.env.hostout.runescalatable ("find %(path)s  -maxdepth 0 ! -name var -exec chown -R %(buildout)s:%(buildoutgroup)s '{}' \; " \
              " -exec chmod -R u+rw,g+r-w,o-rw '{}' \;" % locals())
+
+    # TODO: need a command to set any +x file to also be +x for the group too. runzope and zopectl are examples
 
     api.env.hostout.runescalatable ('mkdir -p %(var)s' % locals())
 #    api.run('mkdir -p %(var)s' % dict(var=var))
@@ -696,11 +700,11 @@ def detecthostos():
     #http://wiki.linuxquestions.org/wiki/Find_out_which_linux_distribution_a_system_belongs_to
     # extra ; because of how fabric uses bash now
     hostos = api.run(
-        "([ -e /etc/SuSE-release ] && echo SuSE) || "
-                "([ -e /etc/redhat-release ] && echo redhat) || "
-                "([ -e /etc/fedora-release ] && echo fedora) || "
-                "(lsb_release -is) || "
-                "([ -e /etc/slackware-version ] && echo slackware)"
+        "[ -e /etc/SuSE-release ] && echo SuSE || "
+                "[ -e /etc/redhat-release ] && echo redhat || "
+                "[ -e /etc/fedora-release ] && echo fedora || "
+                "lsb_release -is || "
+                "[ -e /etc/slackware-version ] && echo slackware"
                )
     if hostos:
         hostos = hostos.lower().strip()
