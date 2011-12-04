@@ -24,18 +24,42 @@ def run(*cmd):
 
 def sudo(*cmd):
     """Execute cmd on remote as root user """
-    with cd( api.env.path):
+    if api.env["no-sudo"]:
+        raise Exception ("Can not execute sudo command because no-sudo is set.")
+
+    with cd(api.env.path):
         api.sudo(' '.join(cmd))
 
 def runescalatable(*cmd):
     try:
         with asbuildoutuser():
-            api.run(' '.join(cmd))
+            api.env.hostout.run(' '.join(cmd))
     except:
         try:
-            api.run(' '.join(cmd))
+            api.env.hostout.run(' '.join(cmd))
         except:
-            api.sudo(' '.join(cmd))
+            api.env.hostout.sudo(' '.join(cmd))
+
+
+def requireOwnership (file, user=None, group=None, recursive=False):
+
+    if bool(user) !=  bool(group):  # logical xor
+        signature = user or group
+        sigFormat = (user and "%U") or "%G"
+    else:
+        signature = "%s:%s" % (user, group)
+        sigFormat = "%U:%G"
+
+    if recursive:
+        opt = "-R"
+    else:
+        opt = ""
+
+    getOwnerGroupCmd = "stat --format=%s '%s'" % (sigFormat, file)
+    chownCmd = "chown %(opt)s %(signature)s '%(file)s'" % locals()
+
+    api.env.hostout.runescalatable ('[ `%(getOwnerGroupCmd)s` == "%(signature)s" ] || %(chownCmd)s' % locals())
+
 
 
 def put(file, target=None):
@@ -43,7 +67,8 @@ def put(file, target=None):
     if os.path.isdir(file):
         uploads = os.walk(file)
     else:
-        uploads = None, None, [file]
+        path = file.split('/')
+        uploads = [('/'.join(path[:-1]), [], [path[-1]])]
     with asbuildoutuser():
         for root, dirs, files in uploads:
             for dir in dirs:
@@ -215,7 +240,11 @@ def buildout(*args):
             pinned = "[buildout]"
             contrib.files.append(pinned, 'pinned.cfg')
         #run generated buildout
-        api.run('%s bin/buildout -c %s -t 1900 %s' % (proxy_cmd(), filename, ' '.join(args)))
+#        api.run('%s bin/buildout -c %s -t 1900 %s' % (proxy_cmd(), filename, ' '.join(args)))
+        api.run('%s bin/buildout -c %s %s' % (proxy_cmd(), filename, ' '.join(args)))
+
+        # Update the var dir permissions to add group write
+        api.run("find var -exec chmod g+w {} \; || true")
 
 def sudobuildout(*args):
     hostout = api.env.get('hostout')
@@ -259,16 +288,18 @@ def bootstrap():
     cmd()
 
     python = 'python%(major)s' % d
-    if api.env["system-python-use-not"]:
-        python = os.path.join (api.env["python-prefix"], "bin/", python)
+    if api.env.get("python-path"):
+        pythonpath = os.path.join (api.env.get("python-path"),'bin')
+        python = "PATH=\$PATH:\"%s\"; %s" % (pythonpath, python)
 
     try:
-        api.run(python + " -V")
-    except:
-        try:
+        with asbuildoutuser():
             with cd(api.env["python-prefix"]+'/bin'):
-                api.run(python + " -V")
-        except:
+                api.run(python + " --version")
+    except:
+        if api.env.get('force-python-compile') and api.env.get("python-path"):
+            api.env.hostout.bootstrap_python()
+        else:
             cmd = getattr(api.env.hostout, 'bootstrap_python_%s'%hostos, api.env.hostout.bootstrap_python)
             cmd()
 
@@ -317,10 +348,8 @@ def setowners():
 #    api.sudo("chmod g+s `find %(path)s -type d` || find %(path)s -type d -exec chmod g+s '{}' \;" % locals()) # so new files will keep same group
 #    api.sudo("chmod g+s `find %(path)s -type d` || find %(path)s -type d -exec chmod g+s '{}' \;" % locals()) # so new files will keep same group
     
-    for cache in [bc, dl, ec]:
-        #HACK Have to deal with a shared cache. maybe need some kind of group
-        api.env.hostout.runescalatable('mkdir -p %(cache)s && chown -R %(buildout)s:%(buildoutgroup)s %(cache)s && ' \
-                 ' chmod -R ug+rw,a+r %(cache)s ' % locals())
+    api.env.hostout.runescalatable('mkdir -p %s %s/dist %s' % (bc, dl, ec))
+
 
     #api.sudo('sudo -u $(effectiveuser) sh -c "export HOME=~$(effectiveuser) && cd $(install_dir) && bin/buildout -c $(hostout_file)"')
 
@@ -340,7 +369,7 @@ def bootstrap_users():
     owner = buildout
 
     try:
-        api.run ("egrep ^%(owner)s: /etc/passwd && egrep ^%(effective)s: /etc/passwd  && egrep ^%(buildoutgroup)s: /etc/group" % locals()) 
+        api.run ("egrep ^%(owner)s: /etc/passwd && egrep ^%(effective)s: /etc/passwd  && egrep ^%(buildoutgroup)s: /etc/group" % locals())
 
     except:
         try:
@@ -358,16 +387,27 @@ def bootstrap_users():
                     % locals() )
 
     if not api.env.get("buildout-password",None):
+        key_filename, key = api.env.hostout.getIdentityKey()
         try:
             #Copy authorized keys to buildout user:
-            key_filename, key = api.env.hostout.getIdentityKey()
             for owner in [api.env['buildout-user']]:
-                api.sudo("mkdir -p ~%s/.ssh" % owner)
-                api.sudo('touch ~%s/.ssh/authorized_keys' % owner)
+
+                # if user is the same as the current user then no need to run
+                # as sudo
+                if owner == api.env["user"]:
+                    use_sudo = False
+                    run = api.run
+                else:
+                    use_sudo = True
+                    run = api.sudo
+                
+                run("mkdir -p ~%s/.ssh" % owner)
+                run('touch ~%s/.ssh/authorized_keys' % owner)
                 fabric.contrib.files.append( text=key,
                         filename='~%s/.ssh/authorized_keys' % owner,
-                        use_sudo=True )
-                api.sudo("chown -R %(owner)s ~%(owner)s/.ssh" % locals() )
+                        use_sudo=use_sudo )
+                run("chown -R %(owner)s ~%(owner)s/.ssh" % locals() )
+
         except:
             raise Exception ("Was not able to create buildout-user ssh keys, please set buildout-password insted.")
 
@@ -382,11 +422,22 @@ def bootstrap_buildout():
     buildout = api.env['buildout-user']
     buildoutgroup = api.env['buildout-group']
     # create buildout dir
-    api.env.hostout.runescalatable ('mkdir -p -m ug+x %(path)s && chown %(buildout)s:%(buildoutgroup)s %(path)s' % dict(
+
+    if path[0] == "/":
+        save_path = api.env.path # the pwd may not yet exist
+        api.env.path = "/"
+
+    api.env.hostout.runescalatable ('mkdir -p -m ug+x %(path)s' % dict(
         path=path,
         buildout=buildout,
         buildoutgroup=buildoutgroup,
     ))
+
+    if path[0] == "/":
+        api.env.path = save_path # restore the pwd
+
+    api.env.hostout.requireOwnership (path, user=buildout, group=buildoutgroup, recursive=True)
+
     # ensure buildout user and group and cd in (ug+x)
     parts = path.split('/')
     for i in range(2, len(parts)):
@@ -396,17 +447,13 @@ def bootstrap_buildout():
             print sys.stderr, "Warning: Not able to chmod ug+x on dir " + os.path.join(*parts[:i])
 
 
-
-
     buildoutcache = api.env['buildout-cache']
-    api.env.hostout.runescalatable ('mkdir -p %s/eggs' % buildoutcache)
-    api.env.hostout.runescalatable ('mkdir -p %s/downloads/dist' % buildoutcache)
-    api.env.hostout.runescalatable ('mkdir -p %s/extends' % buildoutcache)
+    api.env.hostout.runescalatable ('mkdir -p %s' % os.path.join(buildoutcache, "eggs"))
+    api.env.hostout.runescalatable ('mkdir -p %s' % os.path.join(buildoutcache, "download/dist"))
+    api.env.hostout.runescalatable ('mkdir -p %s' % os.path.join(buildoutcache, "extends"))
 
-    try:
-        api.env.hostout.runescalatable ('chown -R %s:%s %s' % (buildout, buildoutgroup, buildoutcache))
-    except:
-        print sys.stderr, "Warning: Not able to chown on the buildout cache dir"
+    api.env.hostout.requireOwnership (buildoutcache, user=buildout, recursive=True)
+
 
     api.env.hostout.setowners()
 
@@ -427,6 +474,9 @@ def bootstrap_buildout():
             version = api.env['python-version']
             major = '.'.join(version.split('.')[:2])
             python = 'python%s' % major
+            if api.env.get("python-path"):
+                pythonpath = os.path.join (api.env.get("python-path"),'bin')
+                python = "PATH=\$PATH:\"%s\"; %s" % (pythonpath, python)
 
             # Bootstrap baby!
             try:
@@ -517,10 +567,13 @@ def bootstrap_python(extra_args=""):
     d = dict(version=versionParsed)
     
     prefix = api.env["python-prefix"]
+    if not prefix:
+        raise "No path for python set"
     runescalatable('mkdir -p %s' % prefix)
     #api.run("([-O %s])"%prefix)
     
-    with cd('/tmp'):
+    with asbuildoutuser():
+      with cd('/tmp'):
         get_url('http://python.org/ftp/python/%(version)s/Python-%(version)s.tgz'%d)
         api.run('tar -xzf Python-%(version)s.tgz'%d)
         with cd('Python-%(version)s'%d):
@@ -636,37 +689,33 @@ def bootstrap_python_redhat():
         pass
 
     
-    if api.env["system-python-use-not"]:
+    # RedHat pacakge management install
+
+    # Redhat/centos don't have Python 2.6 or 2.7 in stock yum repos, use
+    # EPEL.  Could also use RPMforge repo:
+    # http://dag.wieers.com/rpm/FAQ.php#B
+    api.sudo("rpm -Uvh --force http://download.fedora.redhat.com/pub/epel/5/i386/epel-release-5-4.noarch.rpm")
+    version = api.env['python-version']
+    python_versioned = 'python' + ''.join(version.split('.')[:2])
+
+    try:
+        api.sudo('yum -y install gcc gcc-c++ ')
+
+        api.sudo('yum -y install ' +
+                 python_versioned + ' ' +
+                 python_versioned + '-devel ' +
+                 'python-setuptools '
+                 'libxml2-python '
+                 'python-elementtree '
+                 'ncurses-devel '
+                 'zlib zlib-devel '
+                 'readline-devel '
+                 'bzip2-devel '
+                 'openssl openssl-dev '
+                 )
+    except:
+        # Couldn't install from rpm - failover build
         python_build()
-
-    else:
-        # RedHat pacakge management install
-
-        # Redhat/centos don't have Python 2.6 or 2.7 in stock yum repos, use
-        # EPEL.  Could also use RPMforge repo:
-        # http://dag.wieers.com/rpm/FAQ.php#B
-        api.sudo("rpm -Uvh --force http://download.fedora.redhat.com/pub/epel/5/i386/epel-release-5-4.noarch.rpm")
-        version = api.env['python-version']
-        python_versioned = 'python' + ''.join(version.split('.')[:2])
-
-        try:
-            api.sudo('yum -y install gcc gcc-c++ ')
-
-            api.sudo('yum -y install ' +
-                     python_versioned + ' ' +
-                     python_versioned + '-devel ' +
-                     'python-setuptools '
-                     'libxml2-python '
-                     'python-elementtree '
-                     'ncurses-devel '
-                     'zlib zlib-devel '
-                     'readline-devel '
-                     'bzip2-devel '
-                     'openssl openssl-dev '
-                     )
-        except:
-            # Couldn't install from rpm - failover build
-            python_build()
 
 #optional stuff
 #    api.sudo('yum -y install ' +

@@ -24,6 +24,10 @@ import sys
 from itertools import chain
 import re
 from paramiko import RSAKey
+try:
+    from paramiko import DSAKey
+except:
+    DSAKey = None
 from paramiko import SSHConfig
 from fabric import api
 from fabric.state import output
@@ -142,7 +146,7 @@ class HostOut:
         opt['download_cache']= "%s/%s" % (self.buildout_cache, 'downloads')
         install_base = os.path.dirname(self.getRemoteBuildoutPath())
         if not self.buildout_cache:
-            self.buildout_cache = os.path.join(install_base,'buildout-cache')
+            self.buildout_cache = os.path.join(install_base, 'buildout-cache', self.user)
             opt['buildout-cache'] = self.buildout_cache
 
 
@@ -158,11 +162,14 @@ class HostOut:
         self.options['user'] = self.options.get('user') or self.user or 'root'
         self.options['effective-user'] = self.options.get('effective-user') or self.user or 'root'
         self.options['buildout-user'] = self.options.get('buildout-user') or self.user or 'root'
+        self.options["no-sudo"] = self.options.get("no-sudo") or False
 
-        self.options["system-python-use-not"] = self.options.get("system-python-use-not") or False
+        self.options["force-python-compile"] = self.options.get("system-python-use-not", self.options.get('force-python-compile', 'False'))
+        self.options["force-python-compile"] = self.options["force-python-compile"] in ['True','true','yes','Yes']
+        self.options["python-path"] = self.options.get("python-path", os.path.join(install_base, "python"))
         self.options["python-prefix"] = self.options.get("python-prefix", os.path.join(install_base, "python"))
         self.options['tunnel'] = self.options.get("tunnel") or False
-        
+
         self.firstrun = True
 
     def getPreCommands(self):
@@ -290,7 +297,10 @@ class HostOut:
             key = RSAKey.generate(1024)
             key.write_private_key_file(keyfile)
         else:
-            key = RSAKey.from_private_key_file(keyfile)
+            try:
+                key = DSAKey.from_private_key_file(keyfile)
+            except:
+                key = RSAKey.from_private_key_file(keyfile)
         return keyfile, "ssh-rsa %s hostout@hostout" % key.get_base64()
 
     @property
