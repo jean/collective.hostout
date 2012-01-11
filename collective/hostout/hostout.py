@@ -23,12 +23,16 @@ import ConfigParser
 import sys
 from itertools import chain
 import re
-from paramiko import RSAKey
 try:
-    from paramiko import DSAKey
-except:
+    from ssh import SSHConfig, RSAKey
     DSAKey = None
-from paramiko import SSHConfig
+except:
+    try:
+        from paramiko import SSHConfig, RSAKey, DSAKey
+    except:
+        from paramiko import SSHConfig, RSAKey
+        DSAKey = None
+
 from fabric import api
 from fabric.state import output
 
@@ -226,6 +230,7 @@ class HostOut:
         config.set('buildout', 'extends', ' '.join(files))
         config.set('buildout', 'eggs-directory', self.getEggCache())
         config.set('buildout', 'download-cache', self.getDownloadCache())
+        #config.set('buildout', 'extends-cache', self.getDownloadCache()+'/extends')
         config.set('buildout', 'newest', 'true')
         if self.getParts():
             config.set('buildout', 'parts', ' '.join(self.getParts()))
