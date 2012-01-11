@@ -326,22 +326,23 @@ def setowners():
     # What we want is for - login user to own the buildout and the cache.  -
     # effective user to be own the var dir + able to read buildout and cache.
     
-    api.env.hostout.runescalatable ("find %(path)s  -maxdepth 0 ! -name var -exec chown -R %(buildout)s:%(buildoutgroup)s '{}' \; " \
+    api.env.hostout.runescalatable ("find %(path)s  -maxdepth 1 -mindepth 1 ! -name var -exec chown -R %(buildout)s:%(buildoutgroup)s '{}' \; " \
              " -exec chmod -R u+rw,g+r-w,o-rw '{}' \;" % locals())
 
-    # TODO: need a command to set any +x file to also be +x for the group too. runzope and zopectl are examples
+    # command to set any +x file to also be +x for the group too. runzope and zopectl are examples
+    api.run("find %(path)s -perm -u+x ! -path %(var)s -exec chmod g+x '{}' \;" % dict(path=path,var=var))
 
     api.env.hostout.runescalatable ('mkdir -p %(var)s' % locals())
 #    api.run('mkdir -p %(var)s' % dict(var=var))
 
-#    try:
-#        api.env.hostout.runescalatable (\
-#                '[ `stat -c %%U:%%G %(var)s` = "%(effective)s:%(buildoutgroup)s" ] || ' \
-#                'chown -R %(effective)s:%(buildoutgroup)s %(var)s ' % locals())
-#        api.env.hostout.runescalatable ( '[ `stat -c %%A %(var)s` = "drwxrws--x" ] || chmod -R u+rw,g+wrs,o-rw %(var)s ' % locals())
-#    except:
-#        raise Exception ("Was not able to set owner and permissions on "\
-#                    "%(var)s to %(effective)s:%(buildoutgroup)s with u+rw,g+wrs,o-rw" % locals() )
+    try:
+        api.sudo (\
+                '[ `stat -c %%U:%%G %(var)s` = "%(effective)s:%(buildoutgroup)s" ] || ' \
+                'chown -R %(effective)s:%(buildoutgroup)s %(var)s ' % locals())
+        api.sudo ( '[ `stat -c %%A %(var)s` = "drwxrws--x" ] || chmod -R u+rw,g+wrs,o-rw %(var)s ' % locals())
+    except:
+        raise Exception ("Was not able to set owner and permissions on "\
+                    "%(var)s to %(effective)s:%(buildoutgroup)s with u+rw,g+wrs,o-rw" % locals() )
         
 
 #    api.sudo("chmod g+x `find %(path)s -perm -g-x` || find %(path)s -perm -g-x -exec chmod g+x '{}' \;" % locals()) #so effective can execute code
@@ -619,7 +620,8 @@ def bootstrap_python_ubuntu():
              'libbz2-dev '
              'libxp-dev '
              'libreadline5 '
-             'libreadline5-dev '
+             #'libreadline5-dev '
+             'libreadline-gplv2-dev '
              'libssl-dev '
              'curl '
              #'openssl '
