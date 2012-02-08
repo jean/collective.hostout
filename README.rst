@@ -167,7 +167,7 @@ This buildout part will install a script which will deploy prod.cfg
 along with hellowsgi to remote path /var/buildout/demo on our server myhost.com ::
 
   $> bin/buildout
-  Develop: '.../example'
+  Develop: '.../src/hellowsgi'
   Uninstalling host1.
   Installing demo.
   Installing host1.
