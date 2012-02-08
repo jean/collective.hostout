@@ -94,6 +94,7 @@ We will create a buildout cfg file called ``base.cfg`` ::
     recipe=zc.recipe.egg
     eggs =
         PasteScript
+        webob
         hellowsgi    
     
     [pasterini]
