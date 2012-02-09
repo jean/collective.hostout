@@ -211,24 +211,24 @@ Deploying and re-deploying
 Once hostout bootstrap has ensured a working remote buildout, deployment will continue
 by running the following commands:
   
-1. "uploadeggs": Any develop eggs are released as eggs and uploaded to the server. These will be
+1. ``uploadeggs``: Any develop eggs are released as eggs and uploaded to the server. These will be
 uploaded directly into the buildout's buildout-cache/downloads/dist directory which buildout
 uses to find packages before looking up the package index.
-It's very important the packages under development work when packaged, ie are capable of
-being packaged via "python setup.py sdist". A common mistake is when relying on setuptools
+It's very important the packages under development work when packaged, i.e. are capable of
+being packaged via ``python setup.py sdist``. A common mistake is when relying on setuptools
 to automatically detect which files should be included but not have the correct
-setuptools SCM helpers installed if you are using git or hg e.g. for git do "easy_install setuptools-git".
-This will also upload a "pinned.cfg" which contains the generated version numbers for
+setuptools SCM helpers installed if you are using git or hg e.g. for git do ``easy_install setuptools-git``.
+This will also upload a ``pinned.cfg`` which contains the generated version numbers for
 the packages under development that have been uploaded.
 
-2. "uploadbuildout": The relevant .cfg files and any files/directories in the "include"
+2. ``uploadbuildout``: The relevant ``.cfg`` files and any files/directories in the ``include``
 parameter are synced to the remote server.
   
-3. "buildout": Upload a final "pinned.cfg" which includes the generated development
+3. ``buildout``: Upload a final ``pinned.cfg`` which includes the generated development
 package versions pins + all the versions of all the dependencies of the development
 buildout from where the system is being deployed from. These discovered pinned versions
 are recorded during the local buildout process by the hostout recipe and recorded in
-a local "hostoutversions.cfg" file.
+a local ``hostoutversions.cfg`` file.
 Buildout is then run on the remote production buildout.
 
 If you continue to develop your application you can run ``hostout deploy`` each time
