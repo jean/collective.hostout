@@ -162,7 +162,9 @@ buildout ::
     path = /var/buildout/demo
     buildout = prod.cfg
     post-commands = bin/supervisord
-    
+    python-version = 2.6
+    buildout-group = mygroupname
+
 This buildout part will install a script which will deploy prod.cfg
 along with hellowsgi to remote path /var/buildout/demo on our server myhost.com ::
 
@@ -390,7 +392,7 @@ buildout-user
 
 buildout-group
   A group which will own the buildout files including the var files. This group is created if needed in the bootstrap_users
-  command.
+  command. (Mandatory.)
 
 In addition the private key will be read from the location "identity_file" and be used to create 
 a password-less login for the "buildout-user" account by copying the public key into the "authorized_keys"
