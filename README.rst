@@ -364,9 +364,8 @@ buildout-cache
   If you want to override the default location for the buildout-cache on the host
 
 python-version
-  The version of python to install during bootstrapping. Defaults to version
-  used in the local buildout.
-  
+  The version of python to install during bootstrapping. (Mandatory.)
+
 hostos
   Over which platform specific bootstrap_python command is called. For instance
   if hostos=redhat, bootstrap_python_redhat will be called to use "yum" to
