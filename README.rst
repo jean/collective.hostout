@@ -76,6 +76,13 @@ For example, let's say we had the worlds simplest wsgi application ::
             return response(environ, start_response)
  
 We keep this is a package in ``src/hellowsgi``.
+
+You can use ``paster`` to create the package if you need to::
+
+    ./bin/paster create -t basic_package hellowsgi version=0.1
+        description="testing hostout" long_description="" keywords=""
+        author="" author_email="" url="" license_name="" zip_safe=False
+
 We will create a buildout cfg file called ``base.cfg`` ::
 
     [buildout]
@@ -87,6 +94,7 @@ We will create a buildout cfg file called ``base.cfg`` ::
     recipe=zc.recipe.egg
     eggs =
         PasteScript
+        webob
         hellowsgi    
     
     [pasterini]
@@ -159,7 +167,7 @@ This buildout part will install a script which will deploy prod.cfg
 along with hellowsgi to remote path /var/buildout/demo on our server myhost.com ::
 
   $> bin/buildout
-  Develop: '.../example'
+  Develop: '.../src/hellowsgi'
   Uninstalling host1.
   Installing demo.
   Installing host1.
