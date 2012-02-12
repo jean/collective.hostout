@@ -188,7 +188,7 @@ def uploadeggs():
                     ))
     # Ensure there is no local pinned.cfg so we don't clobber it
     # Now upload pinned.cfg. 
-    pinned = "[buildout]\ndevelop=\n[versions]\n"+hostout.packages.developVersions()
+    pinned = "[buildout]\ndevelop=\nauto-checkout=\n[versions]\n"+hostout.packages.developVersions()
     tmp = tempfile.NamedTemporaryFile()
     tmp.write(pinned)
     tmp.flush()
@@ -288,16 +288,16 @@ def bootstrap():
     cmd()
 
     python = 'python%(major)s' % d
-    if api.env.get("python-path"):
-        pythonpath = os.path.join (api.env.get("python-path"),'bin')
-        python = "PATH=\$PATH:\"%s\"; %s" % (pythonpath, python)
+    #if api.env.get("python-path"):
+    pythonpath = os.path.join (api.env.get("python-path"),'bin')
+    python = "PATH=\$PATH:\"%s\"; %s" % (pythonpath, python)
 
     try:
         with asbuildoutuser():
-            with cd(api.env["python-prefix"]+'/bin'):
-                api.run(python + " --version")
+            #with cd(api.env["python-prefix"]+'/bin'):
+                api.run(python + " -V")
     except:
-        if api.env.get('force-python-compile') and api.env.get("python-path"):
+        if api.env.get('force-python-compile'):
             api.env.hostout.bootstrap_python()
         else:
             cmd = getattr(api.env.hostout, 'bootstrap_python_%s'%hostos, api.env.hostout.bootstrap_python)
@@ -341,8 +341,9 @@ def setowners():
                 'chown -R %(effective)s:%(buildoutgroup)s %(var)s ' % locals())
         api.sudo ( '[ `stat -c %%A %(var)s` = "drwxrws--x" ] || chmod -R u+rw,g+wrs,o-rw %(var)s ' % locals())
     except:
-        raise Exception ("Was not able to set owner and permissions on "\
-                    "%(var)s to %(effective)s:%(buildoutgroup)s with u+rw,g+wrs,o-rw" % locals() )
+        pass
+        #raise Exception ("Was not able to set owner and permissions on "\
+        #            "%(var)s to %(effective)s:%(buildoutgroup)s with u+rw,g+wrs,o-rw" % locals() )
         
 
 #    api.sudo("chmod g+x `find %(path)s -perm -g-x` || find %(path)s -perm -g-x -exec chmod g+x '{}' \;" % locals()) #so effective can execute code
@@ -475,16 +476,16 @@ def bootstrap_buildout():
             version = api.env['python-version']
             major = '.'.join(version.split('.')[:2])
             python = 'python%s' % major
-            if api.env.get("python-path"):
-                pythonpath = os.path.join (api.env.get("python-path"),'bin')
-                python = "PATH=\$PATH:\"%s\"; %s" % (pythonpath, python)
+            #if api.env.get("python-path"):
+            pythonpath = os.path.join (api.env.get("python-path"),'bin')
+            python = "PATH=\$PATH:\"%s\"; %s" % (pythonpath, python)
 
             # Bootstrap baby!
-            try:
-                api.run('%s %s bootstrap.py --distribute' % (proxy_cmd(), python) )
-            except:
-                python = os.path.join (api.env["python-prefix"], "bin/", python)
-                api.run('%s %s bootstrap.py --distribute' % (proxy_cmd(), python) )
+            #try:
+            api.run('%s %s bootstrap.py --distribute' % (proxy_cmd(), python) )
+            #except:
+            #    python = os.path.join (api.env["python-prefix"], "bin/", python)
+            #    api.run('%s %s bootstrap.py --distribute' % (proxy_cmd(), python) )
 
 
 
@@ -567,7 +568,7 @@ def bootstrap_python(extra_args=""):
     
     d = dict(version=versionParsed)
     
-    prefix = api.env["python-prefix"]
+    prefix = api.env["python-path"]
     if not prefix:
         raise "No path for python set"
     runescalatable('mkdir -p %s' % prefix)

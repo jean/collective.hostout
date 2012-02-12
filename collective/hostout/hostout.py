@@ -170,8 +170,9 @@ class HostOut:
 
         self.options["force-python-compile"] = self.options.get("system-python-use-not", self.options.get('force-python-compile', 'False'))
         self.options["force-python-compile"] = self.options["force-python-compile"] in ['True','true','yes','Yes']
-        self.options["python-path"] = self.options.get("python-path", os.path.join(install_base, "python"))
-        self.options["python-prefix"] = self.options.get("python-prefix", os.path.join(install_base, "python"))
+        path = os.path.join(install_base, "python")
+        path = self.options.get("python-prefix", path)
+        self.options["python-path"] = self.options.get("python-path", path)
         self.options['tunnel'] = self.options.get("tunnel") or False
 
         self.firstrun = True
@@ -230,6 +231,7 @@ class HostOut:
         config.set('buildout', 'extends', ' '.join(files))
         config.set('buildout', 'eggs-directory', self.getEggCache())
         config.set('buildout', 'download-cache', self.getDownloadCache())
+        config.set('buildout', 'versions', 'versions') #TODO: make this configurable or read from existing
         #config.set('buildout', 'extends-cache', self.getDownloadCache()+'/extends')
         config.set('buildout', 'newest', 'true')
         if self.getParts():
