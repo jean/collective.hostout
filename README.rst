@@ -20,18 +20,18 @@ Hostout is a framework for managing remote buildouts via fabric scripts. It
 includes many helpful built-in commands to package, deploy and bootstrap a
 remote server with based on your local buildout.
 
-Hostout is built around two ideas :-
+Hostout is built around two ideas:
 
 1. Sharing your configuration of deployment for an application in the same
    buildout_ you share with your developers in a team so where and how your
    applications is deployed is automated rather than documentation.
    Deployment then becomes a simple command by any member of the team.
 
-2. Sharing fabric scripts via PyPi so we don't have to reinvent ways
-   to deploy or manage hosted applications
+2. Sharing fabric scripts via PyPI so we don't have to reinvent ways
+   to deploy or manage hosted applications.
 
 If you are already a user of Fabric and buildout but aren't interested in
-the built in hostout's built in ability to deploy then skip ahead to
+the hostout's built-in ability to deploy, then skip ahead to
 `Integrating Fabric into buildout`_.
 
 You don't need to learn Fabric_ to use hostout but you will need to learn
@@ -43,7 +43,7 @@ or whichever server side technology you want to deploy.
 To Contribute
 *************
 
-To contribute :-
+To contribute:
 
 - Code repository: http://github.com/collective/collective.hostout
 - Questions and comments to http://github.com/collective/collective.hostout/issues
@@ -84,7 +84,7 @@ You can use ``paster`` to create the package if you need to::
         description="testing hostout" long_description="" keywords=""
         author="" author_email="" url="" license_name="" zip_safe=False
 
-We will create a buildout cfg file called ``base.cfg`` ::
+We will create a buildout configuration file called ``base.cfg`` ::
 
     [buildout]
     parts = demo pasterini
@@ -117,39 +117,39 @@ We will create a buildout cfg file called ``base.cfg`` ::
 
 Once we bootstrap and build this::
 
-  $> python bootstrap.py -c base.cfg
-  $> bin/buildout -c base.cfg
+    $ python bootstrap.py -c base.cfg
+    $ bin/buildout -c base.cfg
 
 we have a working wsgi app if you run ::
 
-  $> bin/paster serve parts/demo/paster.ini
+    $ bin/paster serve parts/demo/paster.ini
 
 Production buildout
 -------------------
 
-Next you will create a "production buildout" which extends your base.cfg.
-This might contain parts to install webservers, databases, caching servers
-etc.
+Next you will create a "production buildout" which extends your
+``base.cfg``.  This might contain parts to install webservers, databases,
+caching servers etc.
 
 Our ``prod.cfg`` is very simple ::
 
-  [buildout]
-  extends = base.cfg
-  parts += supervisor
+    [buildout]
+    extends = base.cfg
+    parts += supervisor
 
-  [supervisor]
-  recipe=collective.recipe.supervisor
-  programs=
-    10 demo ${buildout:directory}/bin/paster [serve ${pasterini:output}] ${buildout:directory} true
+    [supervisor]
+    recipe=collective.recipe.supervisor
+    programs=
+      10 demo ${buildout:directory}/bin/paster [serve ${pasterini:output}] ${buildout:directory} true
 
-  [pasterini]
-  port = 80
+    [pasterini]
+    port = 80
 
 
 Deployment buildout
 -------------------
 
-Now create a 3rd buildout file, called ``buildout.cfg``. This will be our
+Now create a third buildout file, called ``buildout.cfg``. This will be our
 development/deployment buildout ::
 
     [buildout]
@@ -168,16 +168,16 @@ development/deployment buildout ::
     buildout-group = mygroupname
 
 This buildout part will install a script which will deploy ``prod.cfg``
-along with ``hellowsgi`` to remote path ``/var/buildout/demo`` on our server
-``myhost.com`` ::
+along with ``hellowsgi`` to the remote path ``/var/buildout/demo`` on our
+server ``myhost.com`` ::
 
-  $> bin/buildout
-  Develop: '.../src/hellowsgi'
-  Uninstalling host1.
-  Installing demo.
-  Installing host1.
+    $ bin/buildout
+    Develop: '.../src/hellowsgi'
+    Uninstalling host1.
+    Installing demo.
+    Installing host1.
 
-As part of the buildout process hostout will automatically determine the
+As part of the buildout process, hostout will automatically save the
 versions of all the eggs in your development buildout in a file called
 ``hostoutversions.cfg`` and will pin them for you during deployment. This
 ensures that the production buildout will be running the same software as
@@ -187,18 +187,18 @@ eggs you use in your ``prod.cfg`` as these will not be pinned for you.
 Running hostout deploy for the first time
 -----------------------------------------
 
-The ``bin/hostout`` command takes three kinds of parameters, ::
+The ``bin/hostout`` command takes three kinds of parameters ::
 
- hostout [hostname(s)] [commands] [command arguments]
+   hostout [hostname(s)] [commands] [command arguments]
 
 in our case we will run ::
 
- $> bin/hostout host1 deploy
+   $ bin/hostout host1 deploy
 
-The first thing will do is ask you your password and attempt to login in to
-your server. It will then look for ``/var/buildout/demo/bin/buildout`` and
-when it doesn't find it it will automatically run another hostout command
-called ``bootstrap``.
+The first thing this command will do, is to ask you your password and
+attempt to login in to your server. It will then look for
+``/var/buildout/demo/bin/buildout`` and when it doesn't find it it will
+automatically run another hostout command called ``bootstrap``.
 
 Bootstrap is further broken down into three commands: ``bootstrap_users``,
 ``bootstrap_python`` and ``bootstrap_buildout``. These will create an
@@ -233,20 +233,20 @@ will continue by running the following commands:
    in the ``include`` parameter are synced to the remote server.
 
 3. ``buildout``: Upload a final ``pinned.cfg`` which includes the generated
-   development package versions pins + all the versions of all the
+   development package versions pins and all the versions of all the
    dependencies of the development buildout from where the system is being
    deployed from. These discovered pinned versions are recorded during the
    local buildout process by the hostout recipe and recorded in a local
    ``hostoutversions.cfg`` file.  Buildout is then run on the remote
    production buildout.
 
-   If you continue to develop your application you can run ``hostout
-   deploy`` each time and it will only upload the eggs that have changed and
-   buildout will only reinstall changed parts of the buildout.
+   If you continue to develop your application you can run 
+   ``hostout deploy`` each time and it will only upload the eggs that have
+   changed and buildout will only reinstall changed parts of the buildout.
 
-In our example above deployment would look something like this ::
+In our example above, deployment would look something like this ::
 
-    $> bin/hostout host1 deploy
+    $ bin/hostout host1 deploy
     running clean
     ...
     creating '...example-0.0.0dev_....egg' and adding '...' to it
@@ -276,43 +276,43 @@ Hostout comes with a set of helpful commands. You can show this list by not
 specifying any command at all. The list of commands will vary depending on
 what fabfiles your hostout references. ::
 
- $> bin/hostout host1
- cmdline is: bin/hostout host1 [host2...] [all] cmd1 [cmd2...] [arg1 arg2...]
- Valid commands are:
-   bootstrap        : Install python and users needed to run buildout
-   bootstrap_python :
-   bootstrap_users  : create buildout and the effective user and allow hostout access
-   buildout         : Run the buildout on the remote server
-   deploy           : predeploy, uploadeggs, uploadbuildout, buildout and then postdeploy
-   postdeploy       : Perform any final plugin tasks
-   predeploy        : Install buildout and its dependencies if needed. Hookpoint for plugins
-   setowners        : Ensure ownership and permissions are correct on buildout and cache
-   run              : Execute cmd on remote as login user
-   sudo             : Execute cmd on remote as root user
-   uploadbuildout   : Upload buildout pinned to local picked versions + uploaded eggs
-   uploadeggs       : Any develop eggs are released as eggs and uploaded to the server
+   $ bin/hostout host1
+   cmdline is: bin/hostout host1 [host2...] [all] cmd1 [cmd2...] [arg1 arg2...]
+   Valid commands are:
+     bootstrap        : Install python and users needed to run buildout
+     bootstrap_python :
+     bootstrap_users  : create buildout and the effective user and allow hostout access
+     buildout         : Run the buildout on the remote server
+     deploy           : predeploy, uploadeggs, uploadbuildout, buildout and then postdeploy
+     postdeploy       : Perform any final plugin tasks
+     predeploy        : Install buildout and its dependencies if needed. Hookpoint for plugins
+     setowners        : Ensure ownership and permissions are correct on buildout and cache
+     run              : Execute cmd on remote as login user
+     sudo             : Execute cmd on remote as root user
+     uploadbuildout   : Upload buildout pinned to local picked versions + uploaded eggs
+     uploadeggs       : Any develop eggs are released as eggs and uploaded to the server
 
 
-The run command is helpful to run quick remote commands as the buildout user
-on the remote host ::
+The ``run`` command is helpful to run quick remote commands as the buildout
+user on the remote host ::
 
- $> bin/hostout host1 run pwd
- Hostout: Running command 'run' from collective.hostout
- Logging into the following hosts as root:
-     127.0.0.1
- [127.0.0.1] run: sh -c "cd /var/host1 && pwd"
- [127.0.0.1] out: ...
- Done.
+    $> bin/hostout host1 run pwd
+    Hostout: Running command 'run' from collective.hostout
+    Logging into the following hosts as root:
+        127.0.0.1
+    [127.0.0.1] run: sh -c "cd /var/host1 && pwd"
+    [127.0.0.1] out: ...
+    Done.
 
 We can also use our login user and password to run quick sudo commands ::
 
- $> bin/hostout host1 sudo cat /etc/hosts
- Hostout: Running command 'sudo' from collective.hostout
- Logging into the following hosts as root:
-     127.0.0.1
- [127.0.0.1] run: sh -c "cd /var/host1 && cat/etc/hosts"
- [127.0.0.1] out: ...
- Done.
+    $> bin/hostout host1 sudo cat /etc/hosts
+    Hostout: Running command 'sudo' from collective.hostout
+    Logging into the following hosts as root:
+        127.0.0.1
+    [127.0.0.1] run: sh -c "cd /var/host1 && cat/etc/hosts"
+    [127.0.0.1] out: ...
+    Done.
 
 
 Detailed Hostout Options
@@ -321,25 +321,25 @@ Detailed Hostout Options
 Basic Options
 -------------
 
-host
+``host``
   the IP or hostname of the host to deploy to. by default it will connect to
   port 22 using ssh.  You can override the port by using ``hostname:port``
 
-user
+``user``
   The user as which hostout will attempt to login to your host. Will read a
   user's ssh config to get a default.
 
-password
+``password``
   The password for the login user. If not given then hostout will ask each
   time.
 
-identity-file
+``identity-file``
   A public key for the login user.
 
-extends
-  Specifies another part which contains defaults for this hostout
+``extends``
+  Specifies another part which contains defaults for this hostout.
 
-fabfiles
+``fabfiles``
   Path to fabric files that contain commands which can then be called from
   the hostout script. Commands can access hostout options via
   ``hostout.options`` from the fabric environment.
@@ -557,23 +557,23 @@ Valid commands are:
 Your fabfile can get access parameters passed in the commandline by defining
 them in your function; e.g. ::
 
-  def mycommand(cmdline_param1, cmdline_param2):
-      pass
+    def mycommand(cmdline_param1, cmdline_param2):
+        pass
 
 Your fabfile commands can override any of the standard hostout commands. For
 instance if you which your plugin to hook into the predeploy process then
 just add a predeploy function to your ``fabfile.py`` ::
 
-  def predeploy():
-     api.env.superfun()
+    def predeploy():
+       api.env.superfun()
 
 It is important when overridding to call the "superfun" function so any
 overridden functions are also called.
 
 You can also call any other hostout functions from your command ::
 
-  def mycommand():
-    api.env.hostout.deploy()
+    def mycommand():
+      api.env.hostout.deploy()
 
 The options set in the buildout part are available via the Fabric
 ``api.env`` variable and also via ``api.env.hostout.options``.
