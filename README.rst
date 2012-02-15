@@ -399,7 +399,7 @@ Users and logins
 ----------------
 
 The bootstrap_users command is called as part of the bootstrap process which
-is called if no buildout has already been bootstraped on the remote server.
+is called if no buildout has already been bootstrapped on the remote server.
 This command will login using "user" (the user should have sudo rights) and
 create two additional users and a group which joins them.
 
