@@ -127,7 +127,7 @@ def predeploy():
                 hasBuildout = False
     
     if not hasBuildoutUser or not hasBuildout:
-        raise Exception ("Target deployment does not seem to have been bootstraped.")
+        raise Exception ("Target deployment does not seem to have been bootstrapped.")
 
     api.env.hostout.precommands()
 
@@ -549,8 +549,8 @@ extra_options +=
         #api.sudo('wget http://www.python.org/ftp/python/%(major)s/Python-%(major)s.tgz'%locals())
         #api.sudo('tar xfz Python-%(major)s.tgz;cd Python-%(major)s;./configure;make;make install'%locals())
 
-        api.sudo('svn co http://svn.plone.org/svn/collective/buildout/python/')
-        with cd('python'):
+        api.sudo('git clone git://github.com/collective/buildout.python.git')
+        with cd('buildout.python'):
             get_url('http://python-distribute.org/distribute_setup.py')
             api.sudo('%s python distribute_setup.py'% proxy_cmd())
             api.sudo('%s python bootstrap.py --distribute' % proxy_cmd())
@@ -571,7 +571,7 @@ def bootstrap_python(extra_args=""):
     prefix = api.env["python-path"]
     if not prefix:
         raise "No path for python set"
-    runescalatable('mkdir -p %s' % prefix)
+    api.run('mkdir -p %s'% prefix) 
     #api.run("([-O %s])"%prefix)
     
     with asbuildoutuser():
@@ -584,7 +584,7 @@ def bootstrap_python(extra_args=""):
             
             api.run('./configure BASECFLAGS=-U_FORTIFY_SOURCE --prefix=%(prefix)s  --enable-unicode=ucs4 --with-threads --with-readline --with-dbm --with-zlib --with-ssl --with-bz2 %(extra_args)s' % locals())
             api.run('make')
-            runescalatable('make altinstall')
+            api.run('make install')
         api.run("rm -rf /tmp/Python-%(version)s"%d)
     api.env["system-python-use-not"] = True
 
@@ -621,8 +621,8 @@ def bootstrap_python_ubuntu():
              'libbz2-dev '
              'libxp-dev '
              'libreadline5 '
-             #'libreadline5-dev '
-             'libreadline-gplv2-dev '
+             'libreadline5-dev '
+             #'libreadline-gplv2-dev '
              'libssl-dev '
              'curl '
              #'openssl '
